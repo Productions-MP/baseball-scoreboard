@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { getStore } = require("@netlify/blobs");
 
 const STORE_NAME = "baseball-scoreboard";
 const STATE_KEY = "live-state";
@@ -79,8 +80,7 @@ function stampState(state, source) {
 }
 
 async function getBlobStore() {
-  const blobs = await import("@netlify/blobs");
-  return blobs.getStore(STORE_NAME);
+  return getStore(STORE_NAME);
 }
 
 async function readState() {
