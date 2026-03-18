@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{{ school_name }} Scoreboard Control</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body class="control-page">
+    <main class="control-shell">
+      <section class="panel hero-panel">
+        <div class="hero-copy">
+          <p class="eyebrow">{{ school_name }}</p>
+          <h1>Fallback scoreboard control</h1>
+          <p class="hero-status" id="summary-text">Loading current game state...</p>
+        </div>
+        <div class="hero-pills">
+          <span class="pill pill-mode" id="mode-label">FALLBACK MODE</span>
+          <span class="pill pill-connection" id="network-label">CHECKING</span>
+          <span class="hero-time" id="last-saved">Not saved yet</span>
+        </div>
+      </section>
+
+      <section class="panel auth-panel" id="auth-panel">
+        <div>
+          <h2>Fallback control key</h2>
+          <p>Only needed if you set <code>FALLBACK_CONTROL_KEY</code> on the Pi.</p>
+        </div>
+        <div class="auth-row">
+          <input id="control-key-input" class="text-input" type="password" autocomplete="current-password" placeholder="Fallback control key">
+          <button id="save-key-button" class="action-button primary-button" type="button">Save key</button>
+          <button id="clear-key-button" class="action-button subtle-button" type="button">Clear</button>
+        </div>
+        <p class="inline-note" id="auth-note">If no fallback key is configured, this can stay blank.</p>
+      </section>
+
+      <section class="panel quick-panel">
+        <div class="section-heading">
+          <h2>Inning</h2>
+          <p>Fast controls for emergency local operation.</p>
+        </div>
+        <div class="quick-grid">
+          <button class="action-button" type="button" data-action="inning-down">Inning -</button>
+          <button class="action-button" type="button" data-action="inning-up">Inning +</button>
+          <button class="action-button" type="button" data-action="set-top">Top</button>
+          <button class="action-button" type="button" data-action="set-bottom">Bottom</button>
+          <button class="action-button accent-button" type="button" data-action="next-half">Next half inning</button>
+        </div>
+        <div class="live-badge-row">
+          <span class="live-chip" id="live-inning-chip">TOP 1</span>
+          <span class="live-chip" id="live-score-chip">GUEST 0 | HOME 0</span>
+        </div>
+      </section>
+
+      <section class="panel counts-panel">
+        <div class="section-heading">
+          <h2>Count</h2>
+          <p>Same controls as primary mode.</p>
+        </div>
+        <div class="count-control-grid">
+          <div class="count-control">
+            <h3>Balls</h3>
+            <div class="count-readout" id="balls-value">0</div>
+            <div class="button-pair">
+              <button class="action-button" type="button" data-action="balls-down">-</button>
+              <button class="action-button primary-button" type="button" data-action="balls-up">+</button>
+            </div>
+          </div>
+          <div class="count-control">
+            <h3>Strikes</h3>
+            <div class="count-readout" id="strikes-value">0</div>
+            <div class="button-pair">
+              <button class="action-button" type="button" data-action="strikes-down">-</button>
+              <button class="action-button primary-button" type="button" data-action="strikes-up">+</button>
+            </div>
+          </div>
+          <div class="count-control">
+            <h3>Outs</h3>
+            <div class="count-readout" id="outs-value">0</div>
+            <div class="button-pair">
+              <button class="action-button" type="button" data-action="outs-down">-</button>
+              <button class="action-button primary-button" type="button" data-action="outs-up">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="quick-grid">
+          <button class="action-button" type="button" data-action="clear-balls-strikes">Clear balls / strikes</button>
+          <button class="action-button" type="button" data-action="clear-count">Clear balls / strikes / outs</button>
+        </div>
+      </section>
+
+      <section class="panel quick-panel">
+        <div class="section-heading">
+          <h2>Current inning runs</h2>
+          <p>Adjust the live inning quickly during an outage.</p>
+        </div>
+        <div class="team-quick-grid">
+          <div class="team-quick-card">
+            <h3>Guest</h3>
+            <div class="count-readout" id="guest-current-inning">0</div>
+            <div class="button-pair">
+              <button class="action-button" type="button" data-action="guest-current-down">Guest -</button>
+              <button class="action-button primary-button" type="button" data-action="guest-current-up">Guest +</button>
+            </div>
+          </div>
+          <div class="team-quick-card">
+            <h3>Home</h3>
+            <div class="count-readout" id="home-current-inning">0</div>
+            <div class="button-pair">
+              <button class="action-button" type="button" data-action="home-current-down">Home -</button>
+              <button class="action-button primary-button" type="button" data-action="home-current-up">Home +</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel editor-panel">
+        <div class="section-heading">
+          <h2>Runs by inning</h2>
+          <p>The same backup file works here too.</p>
+        </div>
+        <div class="inning-editor" id="inning-editor"></div>
+      </section>
+
+      <section class="panel utility-panel">
+        <div class="section-heading">
+          <h2>Utilities</h2>
+          <p>Export from primary, then import here if you need to hand off state.</p>
+        </div>
+        <div class="utility-grid">
+          <button class="action-button" type="button" id="download-backup-button">Download backup</button>
+          <button class="action-button" type="button" id="import-backup-button">Import backup</button>
+          <button class="action-button danger-button" type="button" id="reset-game-button">Reset game</button>
+        </div>
+        <input id="backup-file-input" type="file" accept="application/json" hidden>
+        <p class="inline-note" id="save-note">Changes save immediately after each action.</p>
+      </section>
+    </main>
+
+    <script>
+      window.SCOREBOARD_CONFIG = {
+        mode: "fallback",
+        modeLabel: "Fallback mode",
+        requireKey: {{ require_key | tojson }},
+        keyStorageName: "scoreboard-fallback-control-key",
+        endpoints: {
+          getState: "/api/state",
+          updateState: "/api/state",
+          resetState: "/api/reset"
+        }
+      };
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='control.js') }}"></script>
+  </body>
+</html>

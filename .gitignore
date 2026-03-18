@@ -1,0 +1,7 @@
+node_modules/
+.netlify/
+.env
+pi-fallback/.venv/
+pi-fallback/pi.env
+__pycache__/
+*.pyc

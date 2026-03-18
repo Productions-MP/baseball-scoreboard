@@ -1,0 +1,16 @@
+{
+  "name": "highlands-latin-baseball-scoreboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hybrid Netlify + Raspberry Pi baseball scoreboard for Highlands Latin School",
+  "scripts": {
+    "dev": "npx netlify dev",
+    "check:js": "node --check functions/get-state.js && node --check functions/update-state.js && node --check functions/reset-state.js && node --check functions/_lib/state.js && node --check public/assets/app.js && node --check public/assets/display.js && node --check public/assets/control.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  }
+}
