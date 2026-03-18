@@ -80,7 +80,13 @@ function stampState(state, source) {
 }
 
 async function getBlobStore() {
-  return getStore(STORE_NAME);
+  const siteID = process.env.NETLIFY_BLOBS_SITE_ID || process.env.SITE_ID || "";
+  const token = process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN || "";
+
+  return getStore(STORE_NAME, {
+    ...(siteID ? { siteID } : {}),
+    ...(token ? { token } : {}),
+  });
 }
 
 async function readState() {

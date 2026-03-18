@@ -102,10 +102,12 @@ Validation rules:
 2. Create a Netlify site from the repo.
 3. Set the publish directory to `public` and the Functions directory to `functions`.
    The included [netlify.toml](/C:/Users/kuyper.reynolds.MP/GitHub/@KReynolds-MP/baseball-scoreboard/netlify.toml) already does this.
-4. In Netlify site settings, add this environment variable:
+4. In Netlify site settings, add these environment variables:
 
 ```text
 SCOREBOARD_CONTROL_KEY=choose-a-long-random-passphrase
+NETLIFY_BLOBS_SITE_ID=your-site-project-id
+NETLIFY_BLOBS_TOKEN=your-netlify-personal-access-token
 ```
 
 5. Deploy the site.
@@ -121,12 +123,22 @@ npx netlify dev
 ```
 
 For local write testing, create a local `.env` from [.env.example](/C:/Users/kuyper.reynolds.MP/GitHub/@KReynolds-MP/baseball-scoreboard/.env.example).
+This project passes Blobs credentials explicitly so local dev and runtime are consistent:
+
+```js
+getStore("baseball-scoreboard", {
+  siteID: process.env.NETLIFY_BLOBS_SITE_ID || process.env.SITE_ID,
+  token: process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN,
+});
+```
 
 ### Netlify Blobs notes
 
 - The Functions in [functions/_lib/state.js](/C:/Users/kuyper.reynolds.MP/GitHub/@KReynolds-MP/baseball-scoreboard/functions/_lib/state.js) store a single JSON document under the `baseball-scoreboard` Blob store.
 - The first `GET` or `POST` seeds the default game state automatically if no state exists yet.
 - State is stored outside the static deploy, so it survives redeploys.
+- `NETLIFY_BLOBS_SITE_ID` should be your Netlify Project ID.
+- `NETLIFY_BLOBS_TOKEN` should be a Netlify Personal Access Token with access to the site.
 
 ### Protecting the control side
 
