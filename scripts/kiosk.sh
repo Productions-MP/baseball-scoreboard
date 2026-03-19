@@ -2,14 +2,20 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${SCRIPT_DIR}/../pi.env"
+LEGACY_ENV_FILE="${SCRIPT_DIR}/../pi.env"
+ENV_FILE="${SCRIPT_DIR}/../.env"
+
+if [ -f "${LEGACY_ENV_FILE}" ]; then
+  # shellcheck source=/dev/null
+  . "${LEGACY_ENV_FILE}"
+fi
 
 if [ -f "${ENV_FILE}" ]; then
   # shellcheck source=/dev/null
   . "${ENV_FILE}"
 fi
 
-TARGET_URL="${1:-${PRIMARY_DISPLAY_URL:-https://example.netlify.app/display/}}"
+TARGET_URL="${1:-${SCOREBOARD_DISPLAY_URL:-http://127.0.0.1:5050/display}}"
 
 pkill -f chromium >/dev/null 2>&1 || true
 sleep 1

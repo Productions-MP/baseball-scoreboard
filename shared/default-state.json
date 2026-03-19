@@ -1,9 +1,9 @@
 {
   "inning": 1,
   "half": "top",
-  "balls": 0,
-  "strikes": 0,
-  "outs": 0,
+  "ball": 0,
+  "strike": 0,
+  "out": 0,
   "guest_runs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   "home_runs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 }

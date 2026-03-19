@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{{ school_name }} Scoreboard Control</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body class="control-page">
+    <main class="control-shell">
+      <section class="panel control-preview-panel">
+        <div class="section-heading">
+          <p class="section-label">Live Preview</p>
+          <p class="inline-note">Mirrors the scoreboard display in real time.</p>
+        </div>
+        <iframe
+          class="control-preview-iframe"
+          src="/display"
+          title="Live scoreboard preview"
+          tabindex="-1"
+        ></iframe>
+      </section>
+
+      <section class="panel control-main-panel">
+        <div class="control-toolbar">
+          <div class="history-button-row">
+            <button id="undo-button" class="menu-button" type="button">Undo</button>
+            <button id="redo-button" class="menu-button" type="button">Redo</button>
+          </div>
+          <div class="control-page-menu">
+            <button id="menu-button" class="menu-button" type="button" aria-expanded="false" aria-controls="menu-popover">
+              Menu
+            </button>
+            <div class="menu-popover" id="menu-popover" hidden>
+              <button id="open-utilities-button" class="menu-popover-button" type="button">Utilities</button>
+              <button id="logout-button" class="menu-popover-button danger-text" type="button">Log out</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-card inning-card">
+          <p class="section-label">Inning</p>
+          <div class="inning-flow-row">
+            <button class="stepper-button bottom-stepper-button inning-button" type="button" data-action="inning-down">-</button>
+            <div class="inning-label" id="live-inning-label">Inning 1</div>
+            <button class="stepper-button top-stepper-button inning-button" type="button" data-action="inning-up">+</button>
+          </div>
+        </div>
+
+        <div class="flow-card at-bat-card">
+          <p class="section-label">At Bat</p>
+          <div class="at-bat-flow-row">
+            <button class="flow-team-button" id="guest-bat-button" type="button" data-action="set-guest-at-bat">
+              <span class="team-arrow team-arrow-up" id="guest-bat-arrow" aria-hidden="true"></span>
+              <span class="flow-team-label">Guest</span>
+            </button>
+
+            <button class="flow-team-button" id="home-bat-button" type="button" data-action="set-home-at-bat">
+              <span class="team-arrow team-arrow-down" id="home-bat-arrow" aria-hidden="true"></span>
+              <span class="flow-team-label">Home</span>
+            </button>
+
+            <button class="action-button accent-button flow-next-button" type="button" data-action="next-half">Next at bat</button>
+          </div>
+        </div>
+
+        <div class="counts-panel">
+          <div class="counts-panel-header">
+            <p class="section-label">Count And Runs</p>
+            <span class="meta-chip" id="out-chip">Outs 0</span>
+          </div>
+
+          <div class="control-stepper-grid">
+            <div class="stepper-card">
+              <h2>Ball</h2>
+              <div class="stepper-row">
+                <button class="stepper-button bottom-stepper-button" type="button" data-action="ball-down">-</button>
+                <div class="stepper-value" id="ball-value">0</div>
+                <button class="stepper-button top-stepper-button" type="button" data-action="ball-up">+</button>
+              </div>
+            </div>
+
+            <div class="stepper-card">
+              <h2>Strike</h2>
+              <div class="stepper-row">
+                <button class="stepper-button bottom-stepper-button" type="button" data-action="strike-down">-</button>
+                <div class="stepper-value" id="strike-value">0</div>
+                <button class="stepper-button top-stepper-button" type="button" data-action="strike-up">+</button>
+              </div>
+            </div>
+
+            <div class="stepper-card">
+              <h2>Runs</h2>
+              <div class="stepper-row">
+                <button class="stepper-button bottom-stepper-button" type="button" data-action="current-runs-down">-</button>
+                <div class="stepper-value" id="current-runs-value">0</div>
+                <button class="stepper-button top-stepper-button" type="button" data-action="current-runs-up">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="inline-note status-note" id="save-note">Changes save immediately after each action.</p>
+      </section>
+    </main>
+
+    <section class="overlay" id="auth-overlay" hidden>
+      <div class="overlay-card auth-dialog-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+        <p class="eyebrow">Control access</p>
+        <h2 id="auth-title">Enter control password</h2>
+        <p class="inline-note" id="auth-note">Use the local control password saved on the scoreboard Pi.</p>
+        <input
+          id="control-key-input"
+          class="text-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="Control password"
+        >
+        <div class="auth-dialog-actions">
+          <button id="save-key-button" class="action-button primary-button" type="button">Enter</button>
+          <button id="auth-skip-button" class="action-button subtle-button" type="button">Skip</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="overlay overlay-sheet" id="utilities-overlay" hidden>
+      <div class="overlay-card utility-sheet-card">
+        <div class="utility-sheet-header">
+          <div>
+            <p class="eyebrow">Utilities</p>
+            <h2>Backups and manual inning edits</h2>
+          </div>
+          <button id="close-utilities-button" class="menu-button" type="button">Close</button>
+        </div>
+
+        <div class="utility-grid">
+          <button class="action-button" type="button" id="download-backup-button">Download backup</button>
+          <button class="action-button" type="button" id="import-backup-button">Import backup</button>
+          <button class="action-button danger-button" type="button" id="reset-game-button">Reset game</button>
+        </div>
+
+        <div class="section-heading utility-section-heading">
+          <h2>Runs by inning</h2>
+          <p>Manual edit grid for every inning.</p>
+        </div>
+        <div class="inning-editor" id="inning-editor"></div>
+
+        <input id="backup-file-input" type="file" accept="application/json" hidden>
+      </div>
+    </section>
+
+    <script>
+      window.SCOREBOARD_CONFIG = {
+        requireKey: {{ require_key | tojson }},
+        keyStorageName: "scoreboard-local-control-key",
+        endpoints: {
+          getState: "/api/state",
+          updateState: "/api/state",
+          resetState: "/api/reset",
+          websocket: "/ws"
+        }
+      };
+    </script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="{{ url_for('static', filename='control.js') }}"></script>
+  </body>
+</html>

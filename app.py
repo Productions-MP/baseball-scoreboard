@@ -1,0 +1,426 @@
+import hmac
+import json
+import os
+import threading
+from copy import deepcopy
+from datetime import datetime, timezone
+
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
+from flask_sock import Sock
+from simple_websocket import ConnectionClosed
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_FILES = (
+    os.path.join(BASE_DIR, "pi-fallback", "pi.env"),
+    os.path.join(BASE_DIR, "pi.env"),
+    os.path.join(BASE_DIR, ".env"),
+)
+MODE_NAME = "scoreboard"
+
+STATE_LOCK = threading.Lock()
+CLIENTS_LOCK = threading.Lock()
+SEND_LOCK = threading.Lock()
+WS_CLIENTS = set()
+
+DEFAULT_STATE = {
+    "inning": 1,
+    "half": "top",
+    "ball": 0,
+    "strike": 0,
+    "out": 0,
+    "guest_runs": [0] * 10,
+    "home_runs": [0] * 10,
+}
+
+
+def load_env_file(path):
+    if not os.path.exists(path):
+        return
+
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip())
+
+
+def env_value(primary_name, legacy_name=None, default=""):
+    value = os.environ.get(primary_name)
+
+    if value is None and legacy_name:
+        value = os.environ.get(legacy_name)
+
+    if value is None:
+        return default
+
+    return value
+
+
+for env_file in ENV_FILES:
+    load_env_file(env_file)
+
+DEFAULT_STATE_FILE = os.path.join(BASE_DIR, "runtime", "scoreboard_state.json")
+LEGACY_STATE_FILE = os.path.join(BASE_DIR, "pi-fallback", "runtime", "scoreboard_state.json")
+
+STATE_FILE = env_value(
+    "SCOREBOARD_STATE_FILE",
+    "FALLBACK_STATE_FILE",
+    LEGACY_STATE_FILE if os.path.exists(LEGACY_STATE_FILE) and not os.path.exists(DEFAULT_STATE_FILE) else DEFAULT_STATE_FILE,
+)
+SCOREBOARD_HOST = env_value("SCOREBOARD_HOST", "FALLBACK_HOST", "0.0.0.0")
+SCOREBOARD_PORT = int(env_value("SCOREBOARD_PORT", "FALLBACK_PORT", "5050"))
+SCHOOL_NAME = env_value("SCHOOL_NAME", default="Highlands Latin School")
+
+app = Flask(__name__)
+sock = Sock(app)
+
+
+def clone_default_state():
+    return deepcopy(DEFAULT_STATE)
+
+
+def to_int(value, fallback=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def clamp(value, minimum, maximum):
+    return min(maximum, max(minimum, value))
+
+
+def normalize_runs(value):
+    runs = value if isinstance(value, list) else []
+    normalized = []
+
+    for index in range(10):
+        run_value = runs[index] if index < len(runs) else 0
+        normalized.append(max(0, to_int(run_value, 0)))
+
+    return normalized
+
+
+def normalize_state(data=None):
+    source = data or {}
+    return {
+        "inning": clamp(to_int(source.get("inning"), 1), 1, 10),
+        "half": "bottom" if source.get("half") == "bottom" else "top",
+        "ball": clamp(to_int(source.get("ball", source.get("balls")), 0), 0, 3),
+        "strike": clamp(to_int(source.get("strike", source.get("strikes")), 0), 0, 2),
+        "out": clamp(to_int(source.get("out", source.get("outs")), 0), 0, 2),
+        "guest_runs": normalize_runs(source.get("guest_runs")),
+        "home_runs": normalize_runs(source.get("home_runs")),
+    }
+
+
+def merge_state(current_state, patch=None):
+    state_patch = patch if isinstance(patch, dict) else {}
+    return normalize_state(
+        {
+            **current_state,
+            **state_patch,
+            "guest_runs": state_patch.get("guest_runs", current_state.get("guest_runs")),
+            "home_runs": state_patch.get("home_runs", current_state.get("home_runs")),
+        }
+    )
+
+
+def with_derived(state):
+    normalized = normalize_state(state)
+    return {
+        **normalized,
+        "guest_total": sum(normalized["guest_runs"]),
+        "home_total": sum(normalized["home_runs"]),
+        "updated_at": state.get("updated_at") if isinstance(state, dict) else None,
+        "source": state.get("source") if isinstance(state, dict) else MODE_NAME,
+    }
+
+
+def stamp_state(state):
+    return {
+        **normalize_state(state),
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "source": MODE_NAME,
+    }
+
+
+def atomic_write_state(payload):
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    temp_path = STATE_FILE + ".tmp"
+
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+
+    os.replace(temp_path, STATE_FILE)
+
+
+def read_state():
+    with STATE_LOCK:
+        if not os.path.exists(STATE_FILE):
+            seeded = stamp_state(clone_default_state())
+            atomic_write_state(seeded)
+            return seeded
+
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            reset_state = stamp_state(clone_default_state())
+            atomic_write_state(reset_state)
+            return reset_state
+
+    return {
+        **normalize_state(data),
+        "updated_at": data.get("updated_at"),
+        "source": data.get("source", MODE_NAME),
+    }
+
+
+def write_state(next_state):
+    stamped = stamp_state(next_state)
+
+    with STATE_LOCK:
+        atomic_write_state(stamped)
+
+    return stamped
+
+
+def read_control_key():
+    return env_value("SCOREBOARD_CONTROL_KEY", "FALLBACK_CONTROL_KEY", "").strip()
+
+
+def control_key_is_valid(provided_key):
+    expected_key = read_control_key()
+
+    if not expected_key:
+        return True
+
+    provided = str(provided_key or "").strip()
+    return bool(provided) and hmac.compare_digest(expected_key, provided)
+
+
+def control_key_error():
+    return jsonify({"ok": False, "error": "Unauthorized. Provide a valid control key."}), 401
+
+
+def require_control_key():
+    if control_key_is_valid(request.headers.get("x-scoreboard-key", "")):
+        return None
+
+    return control_key_error()
+
+
+def api_payload(state):
+    return {
+        "ok": True,
+        "mode": MODE_NAME,
+        "updated_at": state.get("updated_at"),
+        "state": with_derived(state),
+    }
+
+
+def state_message(state, request_id=None):
+    payload = api_payload(state)
+    payload["type"] = "state"
+
+    if request_id:
+        payload["request_id"] = request_id
+
+    return payload
+
+
+def error_message(message, status=400, request_id=None):
+    payload = {
+        "ok": False,
+        "type": "error",
+        "status": status,
+        "error": message,
+    }
+
+    if request_id:
+        payload["request_id"] = request_id
+
+    return payload
+
+
+def safe_send(client, payload):
+    message = payload if isinstance(payload, str) else json.dumps(payload)
+
+    with SEND_LOCK:
+        client.send(message)
+
+
+def register_client(client):
+    with CLIENTS_LOCK:
+        WS_CLIENTS.add(client)
+
+
+def unregister_client(client):
+    with CLIENTS_LOCK:
+        WS_CLIENTS.discard(client)
+
+
+def broadcast_payload(payload):
+    stale_clients = []
+
+    with CLIENTS_LOCK:
+        clients = list(WS_CLIENTS)
+
+    for client in clients:
+        try:
+            safe_send(client, payload)
+        except Exception:
+            stale_clients.append(client)
+
+    if stale_clients:
+        with CLIENTS_LOCK:
+            for client in stale_clients:
+                WS_CLIENTS.discard(client)
+
+
+def broadcast_state(state, request_id=None):
+    broadcast_payload(state_message(state, request_id=request_id))
+
+
+def parse_state_patch(value):
+    if value is None:
+        return {}
+
+    if not isinstance(value, dict):
+        raise ValueError("State payload must be a JSON object.")
+
+    return value
+
+
+def handle_socket_message(raw_message):
+    try:
+        payload = json.loads(raw_message or "{}")
+    except json.JSONDecodeError:
+        return error_message("Invalid JSON websocket message.")
+
+    if not isinstance(payload, dict):
+        return error_message("Websocket messages must be JSON objects.")
+
+    request_id = payload.get("request_id")
+    message_type = payload.get("type") or "hello"
+
+    if message_type in {"hello", "get_state"}:
+        return state_message(read_state(), request_id=request_id)
+
+    if message_type == "update_state":
+        if not control_key_is_valid(payload.get("control_key", "")):
+            return error_message("Unauthorized. Provide a valid control key.", status=401, request_id=request_id)
+
+        try:
+            next_patch = parse_state_patch(payload.get("state"))
+        except ValueError as error:
+            return error_message(str(error), status=400, request_id=request_id)
+
+        saved = write_state(merge_state(read_state(), next_patch))
+        broadcast_state(saved, request_id=request_id)
+        return None
+
+    if message_type == "reset_state":
+        if not control_key_is_valid(payload.get("control_key", "")):
+            return error_message("Unauthorized. Provide a valid control key.", status=401, request_id=request_id)
+
+        saved = write_state(clone_default_state())
+        broadcast_state(saved, request_id=request_id)
+        return None
+
+    return error_message("Unsupported websocket message type.", status=400, request_id=request_id)
+
+
+@app.get("/")
+def root():
+    return redirect("/display")
+
+
+@app.get("/display")
+def display():
+    return render_template("display.html", school_name=SCHOOL_NAME)
+
+
+@app.get("/control")
+def control():
+    return render_template(
+        "control.html",
+        school_name=SCHOOL_NAME,
+        require_key=bool(read_control_key()),
+    )
+
+
+@app.get("/public/<path:filename>")
+def public_asset(filename):
+    return send_from_directory(os.path.join(app.root_path, "public"), filename)
+
+
+@app.get("/health")
+def health():
+    return jsonify({"ok": True, "websocket_clients": len(WS_CLIENTS), "mode": MODE_NAME})
+
+
+@app.get("/api/state")
+def get_state():
+    return jsonify(api_payload(read_state()))
+
+
+@app.post("/api/state")
+def update_state():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    payload = request.get_json(silent=True) or {}
+
+    if not isinstance(payload, dict):
+        return jsonify(error_message("State payload must be a JSON object.")), 400
+
+    saved = write_state(merge_state(read_state(), payload))
+    broadcast_state(saved)
+    return jsonify(api_payload(saved))
+
+
+@app.post("/api/reset")
+def reset_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    saved = write_state(clone_default_state())
+    broadcast_state(saved)
+    return jsonify(api_payload(saved))
+
+
+@sock.route("/ws")
+def scoreboard_socket(ws):
+    register_client(ws)
+
+    try:
+        safe_send(ws, state_message(read_state()))
+
+        while True:
+            raw_message = ws.receive()
+
+            if raw_message is None:
+                break
+
+            response = handle_socket_message(raw_message)
+
+            if response is not None:
+                safe_send(ws, response)
+    except ConnectionClosed:
+        pass
+    finally:
+        unregister_client(ws)
+
+
+if __name__ == "__main__":
+    app.run(host=SCOREBOARD_HOST, port=SCOREBOARD_PORT, threaded=True)

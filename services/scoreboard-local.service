@@ -1,0 +1,16 @@
+[Unit]
+Description=Highlands Latin School baseball scoreboard local server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__PI_USER__
+WorkingDirectory=__APP_ROOT__
+EnvironmentFile=-__APP_ROOT__/.env
+ExecStart=__APP_ROOT__/.venv/bin/python __APP_ROOT__/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
