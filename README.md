@@ -28,6 +28,7 @@ The intended setup is:
 |-- scripts/
 |   |-- browser-app.sh
 |   |-- install.sh
+|   |-- install-fonts.sh
 |   |-- kiosk.sh
 |   `-- open-local.sh
 |-- services/
@@ -39,6 +40,10 @@ The intended setup is:
 |   |-- control.js
 |   |-- display.js
 |   `-- style.css
+|-- public/
+|   |-- fonts/
+|   |   `-- README.md
+|   `-- logo.png
 `-- templates/
     |-- control.html
     `-- display.html
@@ -121,6 +126,7 @@ The installer will:
 - create a Python virtual environment
 - install Flask and websocket support
 - install `unclutter` (or `unclutter-xfixes`) so the cursor disappears on the display after idle
+- install any bundled `.ttf` or `.otf` fonts from `public/fonts` into the Pi user's local font directory
 - create or normalize `.env`
 - install and start `scoreboard-local.service`
 - configure Raspberry Pi OS desktop autostart to open the local display on boot
@@ -154,6 +160,16 @@ Supported local variables:
 - `SCOREBOARD_STATE_FILE`
 
 Legacy `FALLBACK_*` environment names are still accepted by the Python app so old Pi installs do not break immediately, but the local-only names above are now the primary interface.
+
+## Futura on Raspberry Pi
+
+The display stylesheet prefers Futura already, but Raspberry Pi OS will only use it if the font is actually present.
+
+1. Put your licensed Futura files in [`public/fonts/`](public/fonts/) using the documented filenames from [`public/fonts/README.md`](public/fonts/README.md).
+2. Re-run `~/baseball-scoreboard/scripts/install.sh` on the Pi.
+3. Relaunch the kiosk or reboot the Pi.
+
+If you include `.ttf` or `.otf` files, the installer copies them into `~/.local/share/fonts/baseball-scoreboard` and refreshes the Pi font cache. If you include `.woff` or `.woff2` files with the documented names, Chromium can use them directly from the app even if they are not installed system-wide.
 
 ## Daily operation
 

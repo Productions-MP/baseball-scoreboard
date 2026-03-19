@@ -69,6 +69,7 @@ env_path.write_text("\\n".join(new_lines) + "\\n", encoding="utf-8")
 PY
 
 chmod +x "${APP_ROOT}/scripts/"*.sh
+"${APP_ROOT}/scripts/install-fonts.sh"
 
 python3 - <<PY
 from pathlib import Path

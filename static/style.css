@@ -12,9 +12,41 @@
   --line: var(--gold);
   --linescore-stroke: 3px;
   --shadow: rgba(0, 0, 0, 0.28);
-  --font-display: "Futura", "Futura PT", "Avenir Next", "Avenir", "Trebuchet MS", "Segoe UI", sans-serif;
-  --font-body: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  --font-display: "Scoreboard Futura", "Futura", "Futura PT", "Futura Std", "Avenir Next", "Avenir", "Trebuchet MS", "Segoe UI", sans-serif;
+  --font-body: "Scoreboard Futura", "Futura", "Futura PT", "Futura Std", "Avenir Next", "Avenir", "Segoe UI", sans-serif;
   --font-ui: "Consolas", "SFMono-Regular", "Menlo", "Monaco", monospace;
+}
+
+@font-face {
+  font-family: "Scoreboard Futura";
+  src:
+    local("Futura"),
+    local("Futura Book"),
+    local("Futura PT Book"),
+    local("Futura Std Book"),
+    url("/public/fonts/Futura-Book.woff2") format("woff2"),
+    url("/public/fonts/Futura-Book.woff") format("woff"),
+    url("/public/fonts/Futura-Book.ttf") format("truetype"),
+    url("/public/fonts/Futura-Book.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Scoreboard Futura";
+  src:
+    local("Futura Bold"),
+    local("Futura"),
+    local("Futura PT Bold"),
+    local("Futura Std Bold"),
+    url("/public/fonts/Futura-Bold.woff2") format("woff2"),
+    url("/public/fonts/Futura-Bold.woff") format("woff"),
+    url("/public/fonts/Futura-Bold.ttf") format("truetype"),
+    url("/public/fonts/Futura-Bold.otf") format("opentype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
 }
 
 * {
@@ -40,6 +72,13 @@ input {
 
 .display-page {
   overflow: hidden;
+}
+
+body.display-page,
+body.display-page *,
+body.display-page *::before,
+body.display-page *::after {
+  cursor: none !important;
 }
 
 .display-shell {

@@ -25,6 +25,16 @@
     document.getElementById("home-run-9"),
   ];
 
+  function hideCursor() {
+    if (document.documentElement) {
+      document.documentElement.style.cursor = "none";
+    }
+
+    if (document.body) {
+      document.body.style.cursor = "none";
+    }
+  }
+
   function setScale() {
     const scale = Math.min(window.innerWidth / DESIGN_WIDTH, window.innerHeight / DESIGN_HEIGHT);
     frame.style.transform = "scale(" + Math.max(scale, 0.1) + ")";
@@ -124,6 +134,10 @@
       updateActiveInningHighlight(latestState);
     }
   });
+  window.addEventListener("mousemove", hideCursor, { passive: true });
+  window.addEventListener("pointermove", hideCursor, { passive: true });
+  document.addEventListener("visibilitychange", hideCursor);
+  hideCursor();
   setScale();
   refresh();
   connectRealtime();
