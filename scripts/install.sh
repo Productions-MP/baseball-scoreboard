@@ -26,6 +26,13 @@ python3 -m venv "${APP_ROOT}/.venv"
 "${APP_ROOT}/.venv/bin/pip" install --upgrade pip
 "${APP_ROOT}/.venv/bin/pip" install -r "${APP_ROOT}/requirements.txt"
 
+if command -v apt-get >/dev/null 2>&1 && ! command -v unclutter >/dev/null 2>&1; then
+  sudo apt-get update
+  if ! sudo apt-get install -y unclutter; then
+    sudo apt-get install -y unclutter-xfixes || echo "Warning: unable to install unclutter; the mouse cursor may remain visible." >&2
+  fi
+fi
+
 python3 - <<PY
 from pathlib import Path
 
@@ -135,7 +142,7 @@ cat > "${DESKTOP_DIR}/Scoreboard Control.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Scoreboard Control
-Exec=bash -lc 'if command -v chromium-browser >/dev/null 2>&1; then chromium-browser --app=http://127.0.0.1:5050/control; elif command -v chromium >/dev/null 2>&1; then chromium --app=http://127.0.0.1:5050/control; else echo Chromium not found >&2; exit 1; fi'
+Exec=bash -lc '${APP_ROOT}/scripts/browser-app.sh http://127.0.0.1:5050/control'
 Terminal=false
 EOF
 

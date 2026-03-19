@@ -27,24 +27,7 @@ read_env_value() {
 DISPLAY_URL="$(read_env_value "SCOREBOARD_DISPLAY_URL")"
 TARGET_URL="${1:-${DISPLAY_URL:-http://127.0.0.1:5050/display}}"
 
-if command -v chromium-browser >/dev/null 2>&1; then
-  CHROMIUM_BIN="chromium-browser"
-elif command -v chromium >/dev/null 2>&1; then
-  CHROMIUM_BIN="chromium"
-else
-  echo "Chromium was not found. Install chromium-browser or chromium to use kiosk mode." >&2
-  exit 1
-fi
-
 pkill -f chromium >/dev/null 2>&1 || true
 sleep 1
 
-"${CHROMIUM_BIN}" \
-  --kiosk \
-  --noerrdialogs \
-  --no-first-run \
-  --disable-infobars \
-  --overscroll-history-navigation=0 \
-  --check-for-update-interval=31536000 \
-  --window-size=768,192 \
-  --app="${TARGET_URL}" >/dev/null 2>&1 &
+"${SCRIPT_DIR}/browser-app.sh" --kiosk "${TARGET_URL}"

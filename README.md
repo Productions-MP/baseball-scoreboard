@@ -26,6 +26,7 @@ The intended setup is:
 |-- app.py
 |-- requirements.txt
 |-- scripts/
+|   |-- browser-app.sh
 |   |-- install.sh
 |   |-- kiosk.sh
 |   `-- open-local.sh
@@ -119,6 +120,7 @@ The installer will:
 
 - create a Python virtual environment
 - install Flask and websocket support
+- install `unclutter` (or `unclutter-xfixes`) so the cursor disappears on the display after idle
 - create or normalize `.env`
 - install and start `scoreboard-local.service`
 - configure Raspberry Pi OS desktop autostart to open the local display on boot
@@ -174,6 +176,8 @@ If the server starts but the display does not open on boot, check these first:
 - Raspberry Pi OS Lite will run the Flask server, but it will not open Chromium in kiosk mode because there is no desktop session.
 - Newer Raspberry Pi OS desktop releases use `~/.config/labwc/autostart` instead of the older LXDE autostart file. The installer now writes both locations.
 - Some images expose Chromium as `chromium` instead of `chromium-browser`. The kiosk script now checks both names.
+- The Chromium launcher now uses `--password-store=basic`, so kiosk startup should not trigger the locked desktop keyring prompt on Raspberry Pi OS autologin sessions.
+- If the mouse pointer still stays visible, verify `unclutter` installed successfully with `command -v unclutter`.
 
 Useful kiosk checks:
 
