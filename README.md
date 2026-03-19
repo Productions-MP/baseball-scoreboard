@@ -169,7 +169,7 @@ The display stylesheet prefers Futura already, but Raspberry Pi OS will only use
 2. Re-run `~/baseball-scoreboard/scripts/install.sh` on the Pi.
 3. Relaunch the kiosk or reboot the Pi.
 
-If you include `.ttf` or `.otf` files, the installer copies them into `~/.local/share/fonts/baseball-scoreboard` and refreshes the Pi font cache. If you include `.woff` or `.woff2` files with the documented names, Chromium can use them directly from the app even if they are not installed system-wide.
+If you include `.ttf` or `.otf` files, the installer copies them into `~/.local/share/fonts/baseball-scoreboard` and refreshes the Pi font cache. If you include `.woff` or `.woff2` files with the documented names, Chromium can use them directly from the app even if they are not installed system-wide. The stylesheet now prefers `Futura Std Bold` for bold text and `Futura Std Medium` for normal text, with `Futura Std Light` as an acceptable fallback.
 
 ## Daily operation
 

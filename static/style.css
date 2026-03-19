@@ -20,14 +20,19 @@
 @font-face {
   font-family: "Scoreboard Futura";
   src:
+    local("Futura Std Medium"),
+    local("Futura Medium"),
+    local("Futura Std Light"),
+    local("Futura Light"),
     local("Futura"),
-    local("Futura Book"),
-    local("Futura PT Book"),
-    local("Futura Std Book"),
-    url("/public/fonts/Futura-Book.woff2") format("woff2"),
-    url("/public/fonts/Futura-Book.woff") format("woff"),
-    url("/public/fonts/Futura-Book.ttf") format("truetype"),
-    url("/public/fonts/Futura-Book.otf") format("opentype");
+    url("/public/fonts/Futura-Std-Medium.woff2") format("woff2"),
+    url("/public/fonts/Futura-Std-Medium.woff") format("woff"),
+    url("/public/fonts/Futura-Std-Medium.ttf") format("truetype"),
+    url("/public/fonts/Futura-Std-Medium.otf") format("opentype"),
+    url("/public/fonts/Futura-Std-Light.woff2") format("woff2"),
+    url("/public/fonts/Futura-Std-Light.woff") format("woff"),
+    url("/public/fonts/Futura-Std-Light.ttf") format("truetype"),
+    url("/public/fonts/Futura-Std-Light.otf") format("opentype");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -36,14 +41,13 @@
 @font-face {
   font-family: "Scoreboard Futura";
   src:
+    local("Futura Std Bold"),
     local("Futura Bold"),
     local("Futura"),
-    local("Futura PT Bold"),
-    local("Futura Std Bold"),
-    url("/public/fonts/Futura-Bold.woff2") format("woff2"),
-    url("/public/fonts/Futura-Bold.woff") format("woff"),
-    url("/public/fonts/Futura-Bold.ttf") format("truetype"),
-    url("/public/fonts/Futura-Bold.otf") format("opentype");
+    url("/public/fonts/Futura-Std-Bold.woff2") format("woff2"),
+    url("/public/fonts/Futura-Std-Bold.woff") format("woff"),
+    url("/public/fonts/Futura-Std-Bold.ttf") format("truetype"),
+    url("/public/fonts/Futura-Std-Bold.otf") format("opentype");
   font-style: normal;
   font-weight: 700;
   font-display: swap;
