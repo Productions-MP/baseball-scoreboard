@@ -355,6 +355,11 @@ def control():
     )
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return send_from_directory(BASE_DIR, "favicon.ico", mimetype="image/x-icon")
+
+
 @app.get("/public/<path:filename>")
 def public_asset(filename):
     return send_from_directory(os.path.join(app.root_path, "public"), filename)

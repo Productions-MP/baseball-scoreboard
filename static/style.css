@@ -12,27 +12,14 @@
   --line: var(--gold);
   --linescore-stroke: 3px;
   --shadow: rgba(0, 0, 0, 0.28);
-  --font-display: "Scoreboard Futura", "Futura", "Futura PT", "Futura Std", "Avenir Next", "Avenir", "Trebuchet MS", "Segoe UI", sans-serif;
-  --font-body: "Scoreboard Futura", "Futura", "Futura PT", "Futura Std", "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  --font-display: "Scoreboard Futura", sans-serif;
+  --font-body: "Scoreboard Futura", sans-serif;
   --font-ui: "Consolas", "SFMono-Regular", "Menlo", "Monaco", monospace;
 }
 
 @font-face {
   font-family: "Scoreboard Futura";
-  src:
-    local("Futura Std Medium"),
-    local("Futura Medium"),
-    local("Futura Std Light"),
-    local("Futura Light"),
-    local("Futura"),
-    url("/public/fonts/Futura-Std-Medium.woff2") format("woff2"),
-    url("/public/fonts/Futura-Std-Medium.woff") format("woff"),
-    url("/public/fonts/Futura-Std-Medium.ttf") format("truetype"),
-    url("/public/fonts/Futura-Std-Medium.otf") format("opentype"),
-    url("/public/fonts/Futura-Std-Light.woff2") format("woff2"),
-    url("/public/fonts/Futura-Std-Light.woff") format("woff"),
-    url("/public/fonts/Futura-Std-Light.ttf") format("truetype"),
-    url("/public/fonts/Futura-Std-Light.otf") format("opentype");
+  src: url("/public/fonts/Futura%20Std%20Medium.otf") format("opentype");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -40,14 +27,7 @@
 
 @font-face {
   font-family: "Scoreboard Futura";
-  src:
-    local("Futura Std Bold"),
-    local("Futura Bold"),
-    local("Futura"),
-    url("/public/fonts/Futura-Std-Bold.woff2") format("woff2"),
-    url("/public/fonts/Futura-Std-Bold.woff") format("woff"),
-    url("/public/fonts/Futura-Std-Bold.ttf") format("truetype"),
-    url("/public/fonts/Futura-Std-Bold.otf") format("opentype");
+  src: url("/public/fonts/Futura%20Std%20Bold.otf") format("opentype");
   font-style: normal;
   font-weight: 700;
   font-display: swap;
@@ -121,7 +101,7 @@ body.display-page *::after {
 .linescore-grid {
   position: relative;
   display: grid;
-  grid-template-columns: 94px repeat(10, 41px) 72px;
+  grid-template-columns: 102px repeat(10, 40px) 74px;
   grid-template-rows: 36px 46px 46px 1fr;
   width: 100%;
   height: 100%;
@@ -159,7 +139,7 @@ body.display-page *::after {
 .team-cell {
   position: relative;
   padding: 0;
-  font-size: 1.02rem;
+  font-size: 0.94rem;
   text-align: left;
 }
 
@@ -167,7 +147,7 @@ body.display-page *::after {
   position: absolute;
   left: 12px;
   top: 50%;
-  width: 58px;
+  width: 54px;
   transform: translateY(-50%);
   display: block;
   line-height: 1;
@@ -307,7 +287,7 @@ body.display-page *::after {
 
 .team-arrow {
   position: absolute;
-  left: 71px;
+  left: 75px;
   top: 50%;
   width: 0;
   height: 0;
