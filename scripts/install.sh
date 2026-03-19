@@ -80,26 +80,44 @@ sudo cp /tmp/scoreboard-local.service "${SERVICE_TARGET}"
 sudo systemctl daemon-reload
 sudo systemctl enable --now scoreboard-local.service
 
-AUTOSTART_DIR="/home/${PI_USER}/.config/lxsession/LXDE-pi"
-AUTOSTART_FILE="${AUTOSTART_DIR}/autostart"
-mkdir -p "${AUTOSTART_DIR}"
-touch "${AUTOSTART_FILE}"
+LXDE_AUTOSTART_DIR="/home/${PI_USER}/.config/lxsession/LXDE-pi"
+LXDE_AUTOSTART_FILE="${LXDE_AUTOSTART_DIR}/autostart"
+LABWC_AUTOSTART_DIR="/home/${PI_USER}/.config/labwc"
+LABWC_AUTOSTART_FILE="${LABWC_AUTOSTART_DIR}/autostart"
+mkdir -p "${LXDE_AUTOSTART_DIR}" "${LABWC_AUTOSTART_DIR}"
+touch "${LXDE_AUTOSTART_FILE}" "${LABWC_AUTOSTART_FILE}"
 
 python3 - <<PY
 from pathlib import Path
 
-autostart_path = Path(r"${AUTOSTART_FILE}")
-lines = autostart_path.read_text(encoding="utf-8").splitlines() if autostart_path.exists() else []
-legacy_entries = {
-    "@bash ${LEGACY_ROOT}/scripts/open-primary.sh",
-    "@bash ${LEGACY_ROOT}/scripts/open-fallback.sh",
-    "@bash ${LEGACY_ROOT}/scripts/open-local.sh",
-}
-desired_entry = "@bash ${APP_ROOT}/scripts/open-local.sh"
+autostart_targets = [
+    (
+        Path(r"${LXDE_AUTOSTART_FILE}"),
+        {
+            "@bash ${LEGACY_ROOT}/scripts/open-primary.sh",
+            "@bash ${LEGACY_ROOT}/scripts/open-fallback.sh",
+            "@bash ${LEGACY_ROOT}/scripts/open-local.sh",
+            "@bash ${APP_ROOT}/scripts/open-local.sh",
+        },
+        "@bash ${APP_ROOT}/scripts/open-local.sh",
+    ),
+    (
+        Path(r"${LABWC_AUTOSTART_FILE}"),
+        {
+            "bash ${LEGACY_ROOT}/scripts/open-primary.sh &",
+            "bash ${LEGACY_ROOT}/scripts/open-fallback.sh &",
+            "bash ${LEGACY_ROOT}/scripts/open-local.sh &",
+            "bash ${APP_ROOT}/scripts/open-local.sh &",
+        },
+        "bash ${APP_ROOT}/scripts/open-local.sh &",
+    ),
+]
 
-filtered = [line for line in lines if line.strip() not in legacy_entries and line.strip() != desired_entry]
-filtered.append(desired_entry)
-autostart_path.write_text("\\n".join(filtered) + "\\n", encoding="utf-8")
+for autostart_path, legacy_entries, desired_entry in autostart_targets:
+    lines = autostart_path.read_text(encoding="utf-8").splitlines() if autostart_path.exists() else []
+    filtered = [line for line in lines if line.strip() not in legacy_entries]
+    filtered.append(desired_entry)
+    autostart_path.write_text("\\n".join(filtered) + "\\n", encoding="utf-8")
 PY
 
 DESKTOP_DIR="/home/${PI_USER}/Desktop"
@@ -117,7 +135,7 @@ cat > "${DESKTOP_DIR}/Scoreboard Control.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Scoreboard Control
-Exec=chromium-browser --app=http://127.0.0.1:5050/control
+Exec=bash -lc 'if command -v chromium-browser >/dev/null 2>&1; then chromium-browser --app=http://127.0.0.1:5050/control; elif command -v chromium >/dev/null 2>&1; then chromium --app=http://127.0.0.1:5050/control; else echo Chromium not found >&2; exit 1; fi'
 Terminal=false
 EOF
 

@@ -121,7 +121,7 @@ The installer will:
 - install Flask and websocket support
 - create or normalize `.env`
 - install and start `scoreboard-local.service`
-- configure LXDE autostart to open the local display on boot
+- configure Raspberry Pi OS desktop autostart to open the local display on boot
 - create desktop launchers for the local display and local control
 
 ## Manual setup
@@ -167,6 +167,22 @@ You can relaunch it with:
 
 ```bash
 ~/baseball-scoreboard/scripts/open-local.sh
+```
+
+If the server starts but the display does not open on boot, check these first:
+
+- Raspberry Pi OS Lite will run the Flask server, but it will not open Chromium in kiosk mode because there is no desktop session.
+- Newer Raspberry Pi OS desktop releases use `~/.config/labwc/autostart` instead of the older LXDE autostart file. The installer now writes both locations.
+- Some images expose Chromium as `chromium` instead of `chromium-browser`. The kiosk script now checks both names.
+
+Useful kiosk checks:
+
+```bash
+~/baseball-scoreboard/scripts/open-local.sh
+echo "$XDG_SESSION_TYPE"
+command -v chromium-browser || command -v chromium
+cat ~/.config/lxsession/LXDE-pi/autostart
+cat ~/.config/labwc/autostart
 ```
 
 ### iPad control
