@@ -13,9 +13,10 @@ The deployment model is now Raspberry Pi OS Lite friendly:
 
 1. `scoreboard-local.service` starts the Flask app.
 2. `scoreboard-display.service` takes over `tty1` on boot.
-3. The display service starts Cage.
-4. Cage launches Chromium in kiosk mode against the local `/display` page.
-5. Phones and tablets on the LAN still use `/control` in a normal browser.
+3. `scoreboard-streamdeck.service` listens for a USB-connected Elgato StreamDeck.
+4. The display service starts Cage.
+5. Cage launches Chromium in kiosk mode against the local `/display` page.
+6. Phones and tablets on the LAN still use `/control` in a normal browser.
 
 ## Supported target
 
@@ -38,18 +39,22 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 |-- requirements.txt
 |-- scripts/
 |   |-- browser-app.sh
+|   |-- ignore-libinput-device.sh
 |   |-- install.sh
 |   |-- install-fonts.sh
 |   |-- kiosk.sh
 |   |-- open-local.sh
 |   |-- run-cage-browser.sh
+|   |-- streamdeck_daemon.py
 |   `-- start-kiosk-session.sh
 |-- services/
 |   |-- scoreboard-display.pam
 |   |-- scoreboard-display.service
-|   `-- scoreboard-local.service
+|   |-- scoreboard-local.service
+|   `-- scoreboard-streamdeck.service
 |-- shared/
-|   `-- default-state.json
+|   |-- default-state.json
+|   `-- scoreboard_core.py
 |-- static/
 |   |-- app.js
 |   |-- control.js
@@ -72,6 +77,7 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 - `GET /control`
 - `GET /api/state`
 - `POST /api/state`
+- `POST /api/action`
 - `POST /api/reset`
 - `GET /health`
 
@@ -184,11 +190,14 @@ The installer will:
 - install Raspberry Pi OS Lite packages needed for the kiosk stack
 - create or update the Python virtual environment
 - install Python dependencies
+- install StreamDeck build/runtime dependencies
+- install input-debugging tools used to identify stray pointer devices
 - install bundled fonts from `public/fonts`
 - generate an invisible cursor theme for the kiosk user
 - normalize `.env`
 - install `scoreboard-local.service`
 - install `scoreboard-display.service`
+- install `scoreboard-streamdeck.service`
 - install the PAM file Cage needs for the tty session
 - enable the services
 - set the default boot target to `graphical.target`
@@ -208,6 +217,7 @@ After boot:
 - tty1 should start Cage
 - Chromium should open `http://127.0.0.1:5050/display`
 - the scoreboard should render on HDMI-0
+- any attached StreamDeck or StreamDeck XL should light up with the local 5x3 control layout
 
 ## Services
 
@@ -244,6 +254,21 @@ sudo systemctl restart scoreboard-display.service
 
 `scripts/open-local.sh` is now a convenience wrapper that restarts `scoreboard-display.service`.
 
+### StreamDeck control service
+
+- Unit: `scoreboard-streamdeck.service`
+- Runs as `root` so it can talk to the USB deck and perform local restart/reboot/shutdown actions
+- Uses the regular 5x3 StreamDeck layout on both the 15-key model and the XL
+- Leaves the extra XL-only keys blank
+
+Useful commands:
+
+```bash
+sudo systemctl status scoreboard-streamdeck.service
+sudo journalctl -u scoreboard-streamdeck.service -b
+sudo systemctl restart scoreboard-streamdeck.service
+```
+
 ## Manual app run
 
 ```bash
@@ -270,6 +295,9 @@ Supported local variables:
 - `SCOREBOARD_CONTROL_KEY`
 - `SCHOOL_NAME`
 - `SCOREBOARD_STATE_FILE`
+- `SCOREBOARD_STREAMDECK_BRIGHTNESS`
+- `SCOREBOARD_STREAMDECK_POLL_SECONDS`
+- `SCOREBOARD_STREAMDECK_CONFIRM_SECONDS`
 
 Legacy `FALLBACK_*` environment names are still accepted by the Python app so old Pi installs do not break immediately, but the `SCOREBOARD_*` names above are the primary interface.
 
@@ -332,6 +360,34 @@ The display page is also reachable over the LAN at:
 http://<pi-ip>:5050/display
 ```
 
+### Local StreamDeck control
+
+Plug the StreamDeck directly into the Pi over USB. The daemon always renders the standard 5-column by 3-row layout so the same muscle memory works on the regular StreamDeck and on the StreamDeck XL.
+
+On the XL, only the top-left 5x3 block is used. The remaining keys stay blank.
+
+Main page layout:
+
+```text
+| Inning - | Inning + | Guest Bat | Next At Bat | Home Bat |
+| Ball -   | Ball +   | Strike -  | Strike +    | Clear B/S|
+| Out -    | Out +    | Runs -    | Runs +      | Admin    |
+```
+
+Admin page layout:
+
+```text
+| Back     | Refresh  | Reset Game | State      | Count    |
+| Restart  | Reboot Pi| Shutdown Pi| Guest Tot. | Home Tot.|
+| Updated  | Device   | blank      | blank      | Status   |
+```
+
+Notes:
+
+- `Restart` restarts both `scoreboard-local.service` and `scoreboard-display.service`.
+- `Reset Game`, `Restart`, `Reboot Pi`, and `Shutdown Pi` require a second button press within the confirmation window before they run.
+- Scoreboard buttons use the same local control key as the browser UI, pulled from `.env`.
+
 ## Troubleshooting
 
 ### Chromium never appears
@@ -364,6 +420,21 @@ If the display service complains about permissions or sessions, confirm that:
 - the app user is in the `video`, `render`, and `input` groups
 - you rebooted after changing group membership
 
+### StreamDeck buttons stay dark or do nothing
+
+Check the StreamDeck service logs:
+
+```bash
+sudo journalctl -u scoreboard-streamdeck.service -b
+```
+
+Then verify:
+
+- the deck is connected directly to the Pi by USB
+- `sudo systemctl status scoreboard-streamdeck.service`
+- `python3 -m pip show streamdeck`
+- the `.env` control key matches the one expected by the Flask app if you use `SCOREBOARD_CONTROL_KEY`
+
 ### Cursor is still visible
 
 Confirm the invisible cursor theme exists for the kiosk user:
@@ -377,6 +448,29 @@ Then restart the display service:
 ```bash
 ~/baseball-scoreboard/scripts/open-local.sh
 ```
+
+If the cursor still remains visible and responds to `wlrctl pointer move ...`, the more likely root cause is that libinput is exposing a non-mouse device as a pointer. This is common with kiosk hardware that exposes HDMI-CEC or other HID-style devices.
+
+List pointer-capable libinput devices:
+
+```bash
+~/baseball-scoreboard/scripts/ignore-libinput-device.sh list
+```
+
+Preview a udev rule for a suspicious event device:
+
+```bash
+~/baseball-scoreboard/scripts/ignore-libinput-device.sh preview /dev/input/eventX
+```
+
+Install that ignore rule:
+
+```bash
+sudo ~/baseball-scoreboard/scripts/ignore-libinput-device.sh apply /dev/input/eventX
+sudo reboot
+```
+
+This uses libinput's supported `LIBINPUT_IGNORE_DEVICE` udev property, which causes libinput to ignore that device entirely.
 
 ### Screen stays black on Lite
 
@@ -420,8 +514,8 @@ That lets you snapshot the current local game state and restore it later.
 Useful checks after install:
 
 ```bash
-python3 -m py_compile app.py
-sudo systemctl is-enabled scoreboard-local.service scoreboard-display.service
-sudo systemctl status scoreboard-local.service scoreboard-display.service
+python3 -m py_compile app.py shared/scoreboard_core.py scripts/streamdeck_daemon.py
+sudo systemctl is-enabled scoreboard-local.service scoreboard-display.service scoreboard-streamdeck.service
+sudo systemctl status scoreboard-local.service scoreboard-display.service scoreboard-streamdeck.service
 curl -I http://127.0.0.1:5050/health
 ```

@@ -1,0 +1,18 @@
+[Unit]
+Description=Highlands Latin School baseball scoreboard StreamDeck controls
+After=network-online.target scoreboard-local.service
+Wants=network-online.target scoreboard-local.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=__APP_ROOT__
+EnvironmentFile=-__APP_ROOT__/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__APP_ROOT__/.venv/bin/python __APP_ROOT__/scripts/streamdeck_daemon.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -6,10 +6,12 @@ APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LEGACY_ROOT="${APP_ROOT}/pi-fallback"
 LOCAL_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-local.service"
 DISPLAY_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-display.service"
+STREAMDECK_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-streamdeck.service"
 PAM_TEMPLATE="${APP_ROOT}/services/scoreboard-display.pam"
 SYSTEMD_DIR="/etc/systemd/system"
 LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-local.service"
 DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-display.service"
+STREAMDECK_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-streamdeck.service"
 PAM_TARGET="/etc/pam.d/scoreboard-display"
 ENV_FILE="${APP_ROOT}/.env"
 LEGACY_ENV_FILE="${LEGACY_ROOT}/pi.env"
@@ -114,7 +116,7 @@ if [ -d "${LEGACY_ROOT}/runtime" ] && [ ! -d "${APP_ROOT}/runtime" ]; then
 fi
 
 if command -v apt-get >/dev/null 2>&1; then
-  install_apt_packages python3 python3-venv python3-pip dbus-user-session cage curl x11-apps wlrctl
+  install_apt_packages python3 python3-venv python3-pip python3-dev build-essential libhidapi-dev libusb-1.0-0-dev dbus-user-session cage curl x11-apps wlrctl libinput-tools
 
   if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
     if ! install_apt_packages chromium-browser; then
@@ -168,6 +170,9 @@ ordered_keys = [
     "SCOREBOARD_CONTROL_KEY",
     "SCHOOL_NAME",
     "SCOREBOARD_STATE_FILE",
+    "SCOREBOARD_STREAMDECK_BRIGHTNESS",
+    "SCOREBOARD_STREAMDECK_POLL_SECONDS",
+    "SCOREBOARD_STREAMDECK_CONFIRM_SECONDS",
 ]
 
 new_lines = []
@@ -188,17 +193,21 @@ run_as_app_user "${APP_ROOT}/scripts/install-invisible-cursor-theme.sh"
 
 render_template "${LOCAL_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-local.service"
 render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-display.service"
+render_template "${STREAMDECK_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-streamdeck.service"
 render_template "${PAM_TEMPLATE}" "${TMP_DIR}/scoreboard-display.pam"
 
 sudo systemctl disable --now scoreboard-fallback.service >/dev/null 2>&1 || true
 sudo rm -f "${SYSTEMD_DIR}/scoreboard-fallback.service"
 sudo systemctl disable --now scoreboard-display.service >/dev/null 2>&1 || true
+sudo systemctl disable --now scoreboard-streamdeck.service >/dev/null 2>&1 || true
 sudo install -m 0644 "${TMP_DIR}/scoreboard-local.service" "${LOCAL_SERVICE_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-display.service" "${DISPLAY_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scoreboard-streamdeck.service" "${STREAMDECK_SERVICE_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-display.pam" "${PAM_TARGET}"
 sudo systemctl daemon-reload
 sudo systemctl enable --now scoreboard-local.service
 sudo systemctl enable --now scoreboard-display.service
+sudo systemctl enable --now scoreboard-streamdeck.service
 sudo systemctl set-default graphical.target
 
 LXDE_AUTOSTART_DIR="${APP_HOME}/.config/lxsession/LXDE-pi"

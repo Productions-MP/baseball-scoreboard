@@ -2,12 +2,12 @@ import hmac
 import json
 import os
 import threading
-from copy import deepcopy
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 from flask_sock import Sock
 from simple_websocket import ConnectionClosed
+from shared.scoreboard_core import apply_action, clone_default_state, merge_state, normalize_state, with_derived
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILES = (
@@ -21,17 +21,6 @@ STATE_LOCK = threading.Lock()
 CLIENTS_LOCK = threading.Lock()
 SEND_LOCK = threading.Lock()
 WS_CLIENTS = set()
-
-DEFAULT_STATE = {
-    "inning": 1,
-    "half": "top",
-    "ball": 0,
-    "strike": 0,
-    "out": 0,
-    "guest_runs": [0] * 10,
-    "home_runs": [0] * 10,
-}
-
 
 def load_env_file(path):
     if not os.path.exists(path):
@@ -76,68 +65,6 @@ SCHOOL_NAME = env_value("SCHOOL_NAME", default="Highlands Latin School")
 
 app = Flask(__name__)
 sock = Sock(app)
-
-
-def clone_default_state():
-    return deepcopy(DEFAULT_STATE)
-
-
-def to_int(value, fallback=0):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return fallback
-
-
-def clamp(value, minimum, maximum):
-    return min(maximum, max(minimum, value))
-
-
-def normalize_runs(value):
-    runs = value if isinstance(value, list) else []
-    normalized = []
-
-    for index in range(10):
-        run_value = runs[index] if index < len(runs) else 0
-        normalized.append(max(0, to_int(run_value, 0)))
-
-    return normalized
-
-
-def normalize_state(data=None):
-    source = data or {}
-    return {
-        "inning": clamp(to_int(source.get("inning"), 1), 1, 10),
-        "half": "bottom" if source.get("half") == "bottom" else "top",
-        "ball": clamp(to_int(source.get("ball", source.get("balls")), 0), 0, 3),
-        "strike": clamp(to_int(source.get("strike", source.get("strikes")), 0), 0, 2),
-        "out": clamp(to_int(source.get("out", source.get("outs")), 0), 0, 2),
-        "guest_runs": normalize_runs(source.get("guest_runs")),
-        "home_runs": normalize_runs(source.get("home_runs")),
-    }
-
-
-def merge_state(current_state, patch=None):
-    state_patch = patch if isinstance(patch, dict) else {}
-    return normalize_state(
-        {
-            **current_state,
-            **state_patch,
-            "guest_runs": state_patch.get("guest_runs", current_state.get("guest_runs")),
-            "home_runs": state_patch.get("home_runs", current_state.get("home_runs")),
-        }
-    )
-
-
-def with_derived(state):
-    normalized = normalize_state(state)
-    return {
-        **normalized,
-        "guest_total": sum(normalized["guest_runs"]),
-        "home_total": sum(normalized["home_runs"]),
-        "updated_at": state.get("updated_at") if isinstance(state, dict) else None,
-        "source": state.get("source") if isinstance(state, dict) else MODE_NAME,
-    }
 
 
 def stamp_state(state):
@@ -220,7 +147,7 @@ def api_payload(state):
         "ok": True,
         "mode": MODE_NAME,
         "updated_at": state.get("updated_at"),
-        "state": with_derived(state),
+        "state": with_derived(state, default_source=MODE_NAME),
     }
 
 
@@ -297,6 +224,15 @@ def parse_state_patch(value):
     return value
 
 
+def parse_action_name(value):
+    action_name = str(value or "").strip()
+
+    if not action_name:
+        raise ValueError("Action name is required.")
+
+    return action_name
+
+
 def handle_socket_message(raw_message):
     try:
         payload = json.loads(raw_message or "{}")
@@ -322,6 +258,19 @@ def handle_socket_message(raw_message):
             return error_message(str(error), status=400, request_id=request_id)
 
         saved = write_state(merge_state(read_state(), next_patch))
+        broadcast_state(saved, request_id=request_id)
+        return None
+
+    if message_type == "perform_action":
+        if not control_key_is_valid(payload.get("control_key", "")):
+            return error_message("Unauthorized. Provide a valid control key.", status=401, request_id=request_id)
+
+        try:
+            action_name = parse_action_name(payload.get("action"))
+            saved = write_state(apply_action(read_state(), action_name))
+        except ValueError as error:
+            return error_message(str(error), status=400, request_id=request_id)
+
         broadcast_state(saved, request_id=request_id)
         return None
 
@@ -388,6 +337,28 @@ def update_state():
         return jsonify(error_message("State payload must be a JSON object.")), 400
 
     saved = write_state(merge_state(read_state(), payload))
+    broadcast_state(saved)
+    return jsonify(api_payload(saved))
+
+
+@app.post("/api/action")
+def action_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    payload = request.get_json(silent=True) or {}
+
+    if not isinstance(payload, dict):
+        return jsonify(error_message("Action payload must be a JSON object.")), 400
+
+    try:
+        action_name = parse_action_name(payload.get("action"))
+        saved = write_state(apply_action(read_state(), action_name))
+    except ValueError as error:
+        return jsonify(error_message(str(error))), 400
+
     broadcast_state(saved)
     return jsonify(api_payload(saved))
 
