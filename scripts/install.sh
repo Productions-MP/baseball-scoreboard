@@ -4,11 +4,100 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LEGACY_ROOT="${APP_ROOT}/pi-fallback"
-SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-local.service"
-SERVICE_TARGET="/etc/systemd/system/scoreboard-local.service"
+LOCAL_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-local.service"
+DISPLAY_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-display.service"
+PAM_TEMPLATE="${APP_ROOT}/services/scoreboard-display.pam"
+SYSTEMD_DIR="/etc/systemd/system"
+LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-local.service"
+DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-display.service"
+PAM_TARGET="/etc/pam.d/scoreboard-display"
 ENV_FILE="${APP_ROOT}/.env"
 LEGACY_ENV_FILE="${LEGACY_ROOT}/pi.env"
-PI_USER="${SUDO_USER:-$USER}"
+APP_USER="${SUDO_USER:-$USER}"
+APP_GROUP="$(id -gn "${APP_USER}")"
+APP_UID="$(id -u "${APP_USER}")"
+APP_HOME="$(getent passwd "${APP_USER}" 2>/dev/null | cut -d: -f6)"
+APP_HOME="${APP_HOME:-/home/${APP_USER}}"
+TMP_DIR="$(mktemp -d)"
+APT_UPDATED="0"
+
+cleanup() {
+  rm -rf "${TMP_DIR}"
+}
+
+trap cleanup EXIT
+
+run_as_app_user() {
+  if [ "$(id -un)" = "${APP_USER}" ]; then
+    "$@"
+    return
+  fi
+
+  sudo -u "${APP_USER}" "$@"
+}
+
+apt_update_once() {
+  if [ "${APT_UPDATED}" = "1" ]; then
+    return
+  fi
+
+  sudo apt-get update
+  APT_UPDATED="1"
+}
+
+install_apt_packages() {
+  apt_update_once
+  sudo apt-get install -y "$@"
+}
+
+cleanup_desktop_autostart() {
+  autostart_file="$1"
+
+  if [ ! -f "${autostart_file}" ]; then
+    return
+  fi
+
+  python3 - "${autostart_file}" <<'PY'
+from pathlib import Path
+import sys
+
+autostart_path = Path(sys.argv[1])
+lines = autostart_path.read_text(encoding="utf-8").splitlines()
+remove_fragments = (
+    "open-primary.sh",
+    "open-fallback.sh",
+    "open-local.sh",
+)
+
+filtered = [line for line in lines if not any(fragment in line for fragment in remove_fragments)]
+autostart_path.write_text("\n".join(filtered) + ("\n" if filtered else ""), encoding="utf-8")
+PY
+}
+
+render_template() {
+  source_path="$1"
+  target_path="$2"
+
+  python3 - "${source_path}" "${target_path}" "${APP_ROOT}" "${APP_USER}" "${APP_GROUP}" "${APP_UID}" <<'PY'
+from pathlib import Path
+import sys
+
+source_path = Path(sys.argv[1])
+target_path = Path(sys.argv[2])
+content = source_path.read_text(encoding="utf-8")
+replacements = {
+    "__APP_ROOT__": sys.argv[3],
+    "__APP_USER__": sys.argv[4],
+    "__APP_GROUP__": sys.argv[5],
+    "__APP_UID__": sys.argv[6],
+}
+
+for old_value, new_value in replacements.items():
+    content = content.replace(old_value, new_value)
+
+target_path.write_text(content, encoding="utf-8")
+PY
+}
 
 if [ ! -f "${ENV_FILE}" ]; then
   if [ -f "${LEGACY_ENV_FILE}" ]; then
@@ -18,38 +107,58 @@ if [ ! -f "${ENV_FILE}" ]; then
   fi
 fi
 
+sudo chown "${APP_USER}:${APP_GROUP}" "${ENV_FILE}" >/dev/null 2>&1 || true
+
 if [ -d "${LEGACY_ROOT}/runtime" ] && [ ! -d "${APP_ROOT}/runtime" ]; then
   mv "${LEGACY_ROOT}/runtime" "${APP_ROOT}/runtime"
 fi
 
-python3 -m venv "${APP_ROOT}/.venv"
-"${APP_ROOT}/.venv/bin/pip" install --upgrade pip
-"${APP_ROOT}/.venv/bin/pip" install -r "${APP_ROOT}/requirements.txt"
+if command -v apt-get >/dev/null 2>&1; then
+  install_apt_packages python3 python3-venv python3-pip dbus-user-session cage curl
 
-if command -v apt-get >/dev/null 2>&1 && ! command -v unclutter >/dev/null 2>&1; then
-  sudo apt-get update
-  if ! sudo apt-get install -y unclutter; then
-    sudo apt-get install -y unclutter-xfixes || echo "Warning: unable to install unclutter; the mouse cursor may remain visible." >&2
+  if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
+    if ! install_apt_packages chromium-browser; then
+      install_apt_packages chromium
+    fi
   fi
 fi
 
-python3 - <<PY
+sudo usermod -a -G video,render,input "${APP_USER}" >/dev/null 2>&1 || true
+
+if [ -d "${APP_ROOT}/.venv" ]; then
+  sudo chown -R "${APP_USER}:${APP_GROUP}" "${APP_ROOT}/.venv"
+fi
+
+if [ -d "${APP_ROOT}/runtime" ]; then
+  sudo chown -R "${APP_USER}:${APP_GROUP}" "${APP_ROOT}/runtime"
+fi
+
+run_as_app_user python3 -m venv "${APP_ROOT}/.venv"
+run_as_app_user "${APP_ROOT}/.venv/bin/python" -m pip install --upgrade pip
+run_as_app_user "${APP_ROOT}/.venv/bin/python" -m pip install -r "${APP_ROOT}/requirements.txt"
+
+run_as_app_user python3 - "${ENV_FILE}" <<'PY'
 from pathlib import Path
+import sys
 
-env_path = Path(r"${ENV_FILE}")
+env_path = Path(sys.argv[1])
 lines = env_path.read_text(encoding="utf-8").splitlines()
-updates = {
-    "SCOREBOARD_DISPLAY_URL": "http://127.0.0.1:5050/display",
-    "SCOREBOARD_CONTROL_URL": "http://127.0.0.1:5050/control",
-}
-
 existing = {}
-for line in lines:
-    if "=" in line and not line.lstrip().startswith("#"):
-        key, value = line.split("=", 1)
-        existing[key] = value
 
-existing.update(updates)
+for line in lines:
+    if "=" not in line or line.lstrip().startswith("#"):
+        continue
+
+    key, value = line.split("=", 1)
+    existing[key.strip()] = value.strip()
+
+port = existing.get("SCOREBOARD_PORT", "5050") or "5050"
+existing.update(
+    {
+        "SCOREBOARD_DISPLAY_URL": f"http://127.0.0.1:{port}/display",
+        "SCOREBOARD_CONTROL_URL": f"http://127.0.0.1:{port}/control",
+    }
+)
 
 ordered_keys = [
     "SCOREBOARD_DISPLAY_URL",
@@ -58,6 +167,7 @@ ordered_keys = [
     "SCOREBOARD_PORT",
     "SCOREBOARD_CONTROL_KEY",
     "SCHOOL_NAME",
+    "SCOREBOARD_STATE_FILE",
 ]
 
 new_lines = []
@@ -65,91 +175,76 @@ for key in ordered_keys:
     if key in existing:
         new_lines.append(f"{key}={existing[key]}")
 
-env_path.write_text("\\n".join(new_lines) + "\\n", encoding="utf-8")
+for key in sorted(existing):
+    if key not in ordered_keys:
+        new_lines.append(f"{key}={existing[key]}")
+
+env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 PY
 
 chmod +x "${APP_ROOT}/scripts/"*.sh
 "${APP_ROOT}/scripts/install-fonts.sh"
 
-python3 - <<PY
-from pathlib import Path
-
-template_path = Path(r"${SERVICE_TEMPLATE}")
-target_path = Path("/tmp/scoreboard-local.service")
-content = template_path.read_text(encoding="utf-8")
-content = content.replace("__APP_ROOT__", r"${APP_ROOT}")
-content = content.replace("__PI_USER__", r"${PI_USER}")
-target_path.write_text(content, encoding="utf-8")
-PY
+render_template "${LOCAL_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-local.service"
+render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-display.service"
+render_template "${PAM_TEMPLATE}" "${TMP_DIR}/scoreboard-display.pam"
 
 sudo systemctl disable --now scoreboard-fallback.service >/dev/null 2>&1 || true
-sudo rm -f /etc/systemd/system/scoreboard-fallback.service
-sudo cp /tmp/scoreboard-local.service "${SERVICE_TARGET}"
+sudo rm -f "${SYSTEMD_DIR}/scoreboard-fallback.service"
+sudo systemctl disable --now scoreboard-display.service >/dev/null 2>&1 || true
+sudo install -m 0644 "${TMP_DIR}/scoreboard-local.service" "${LOCAL_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scoreboard-display.service" "${DISPLAY_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scoreboard-display.pam" "${PAM_TARGET}"
 sudo systemctl daemon-reload
 sudo systemctl enable --now scoreboard-local.service
+sudo systemctl enable --now scoreboard-display.service
+sudo systemctl set-default graphical.target
 
-LXDE_AUTOSTART_DIR="/home/${PI_USER}/.config/lxsession/LXDE-pi"
+LXDE_AUTOSTART_DIR="${APP_HOME}/.config/lxsession/LXDE-pi"
 LXDE_AUTOSTART_FILE="${LXDE_AUTOSTART_DIR}/autostart"
-LABWC_AUTOSTART_DIR="/home/${PI_USER}/.config/labwc"
+LABWC_AUTOSTART_DIR="${APP_HOME}/.config/labwc"
 LABWC_AUTOSTART_FILE="${LABWC_AUTOSTART_DIR}/autostart"
-mkdir -p "${LXDE_AUTOSTART_DIR}" "${LABWC_AUTOSTART_DIR}"
-touch "${LXDE_AUTOSTART_FILE}" "${LABWC_AUTOSTART_FILE}"
+cleanup_desktop_autostart "${LXDE_AUTOSTART_FILE}"
+cleanup_desktop_autostart "${LABWC_AUTOSTART_FILE}"
 
-python3 - <<PY
-from pathlib import Path
+rm -f "${APP_HOME}/Desktop/Scoreboard Display.desktop" "${APP_HOME}/Desktop/Scoreboard Control.desktop"
 
-autostart_targets = [
-    (
-        Path(r"${LXDE_AUTOSTART_FILE}"),
-        {
-            "@bash ${LEGACY_ROOT}/scripts/open-primary.sh",
-            "@bash ${LEGACY_ROOT}/scripts/open-fallback.sh",
-            "@bash ${LEGACY_ROOT}/scripts/open-local.sh",
-            "@bash ${APP_ROOT}/scripts/open-local.sh",
-        },
-        "@bash ${APP_ROOT}/scripts/open-local.sh",
-    ),
-    (
-        Path(r"${LABWC_AUTOSTART_FILE}"),
-        {
-            "bash ${LEGACY_ROOT}/scripts/open-primary.sh &",
-            "bash ${LEGACY_ROOT}/scripts/open-fallback.sh &",
-            "bash ${LEGACY_ROOT}/scripts/open-local.sh &",
-            "bash ${APP_ROOT}/scripts/open-local.sh &",
-        },
-        "bash ${APP_ROOT}/scripts/open-local.sh &",
-    ),
-]
+BOOT_CONFIG_NOTE=""
 
-for autostart_path, legacy_entries, desired_entry in autostart_targets:
-    lines = autostart_path.read_text(encoding="utf-8").splitlines() if autostart_path.exists() else []
-    filtered = [line for line in lines if line.strip() not in legacy_entries]
-    filtered.append(desired_entry)
-    autostart_path.write_text("\\n".join(filtered) + "\\n", encoding="utf-8")
-PY
+if [ -f /boot/firmware/config.txt ] && ! grep -q "^dtoverlay=vc4-kms-v3d" /boot/firmware/config.txt; then
+  BOOT_CONFIG_NOTE="${BOOT_CONFIG_NOTE}
+- Ensure /boot/firmware/config.txt contains dtoverlay=vc4-kms-v3d"
+fi
 
-DESKTOP_DIR="/home/${PI_USER}/Desktop"
-mkdir -p "${DESKTOP_DIR}"
+if [ -f /boot/firmware/config.txt ] && ! grep -q "^disable_overscan=1" /boot/firmware/config.txt; then
+  BOOT_CONFIG_NOTE="${BOOT_CONFIG_NOTE}
+- Consider adding disable_overscan=1 to /boot/firmware/config.txt"
+fi
 
-cat > "${DESKTOP_DIR}/Scoreboard Display.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Scoreboard Display
-Exec=bash -lc '${APP_ROOT}/scripts/open-local.sh'
-Terminal=false
-EOF
+if [ -f /boot/firmware/cmdline.txt ] && ! grep -q "consoleblank=0" /boot/firmware/cmdline.txt; then
+  BOOT_CONFIG_NOTE="${BOOT_CONFIG_NOTE}
+- Add consoleblank=0 to the single /boot/firmware/cmdline.txt line to keep tty1 from blanking"
+fi
 
-cat > "${DESKTOP_DIR}/Scoreboard Control.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Scoreboard Control
-Exec=bash -lc '${APP_ROOT}/scripts/browser-app.sh http://127.0.0.1:5050/control'
-Terminal=false
-EOF
-
-chmod +x "${DESKTOP_DIR}/Scoreboard Display.desktop" "${DESKTOP_DIR}/Scoreboard Control.desktop"
+if [ -f /boot/firmware/cmdline.txt ] && ! grep -q "video=HDMI-A-1:" /boot/firmware/cmdline.txt; then
+  BOOT_CONFIG_NOTE="${BOOT_CONFIG_NOTE}
+- Add video=HDMI-A-1:D to /boot/firmware/cmdline.txt to force the Pi 4 kiosk to HDMI-0"
+fi
 
 echo "Local scoreboard server installed."
-echo "Display URL on Pi: http://127.0.0.1:5050/display"
-echo "Control URL on Pi: http://127.0.0.1:5050/control"
-echo "Control URL on LAN: http://<pi-ip>:5050/control"
+DISPLAY_URL="$(grep -m1 '^SCOREBOARD_DISPLAY_URL=' "${ENV_FILE}" | cut -d= -f2- || true)"
+CONTROL_URL="$(grep -m1 '^SCOREBOARD_CONTROL_URL=' "${ENV_FILE}" | cut -d= -f2- || true)"
+PORT_VALUE="$(grep -m1 '^SCOREBOARD_PORT=' "${ENV_FILE}" | cut -d= -f2- || true)"
+DISPLAY_URL="${DISPLAY_URL:-http://127.0.0.1:5050/display}"
+CONTROL_URL="${CONTROL_URL:-http://127.0.0.1:5050/control}"
+PORT_VALUE="${PORT_VALUE:-5050}"
+
+echo "Display URL on Pi: ${DISPLAY_URL}"
+echo "Control URL on Pi: ${CONTROL_URL}"
+echo "Control URL on LAN: http://<pi-ip>:${PORT_VALUE}/control"
+
+if [ -n "${BOOT_CONFIG_NOTE}" ]; then
+  echo
+  echo "Manual Raspberry Pi boot configuration still recommended:"
+  printf '%s\n' "${BOOT_CONFIG_NOTE}"
+fi

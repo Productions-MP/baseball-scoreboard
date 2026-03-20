@@ -5,9 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=__PI_USER__
+User=__APP_USER__
+Group=__APP_GROUP__
 WorkingDirectory=__APP_ROOT__
 EnvironmentFile=-__APP_ROOT__/.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=__APP_ROOT__/.venv/bin/python __APP_ROOT__/app.py
 Restart=always
 RestartSec=3

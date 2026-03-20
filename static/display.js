@@ -37,7 +37,12 @@
 
   function setScale() {
     const scale = Math.min(window.innerWidth / DESIGN_WIDTH, window.innerHeight / DESIGN_HEIGHT);
-    frame.style.transform = "scale(" + Math.max(scale, 0.1) + ")";
+    const safeScale = Math.max(scale, 0.1);
+    const offsetX = Math.max((window.innerWidth - DESIGN_WIDTH * safeScale) / 2, 0);
+    const offsetY = Math.max((window.innerHeight - DESIGN_HEIGHT * safeScale) / 2, 0);
+
+    frame.style.transform =
+      "translate(" + offsetX + "px, " + offsetY + "px) scale(" + safeScale + ")";
   }
 
   function setCell(id, value) {

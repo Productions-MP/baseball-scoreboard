@@ -1,0 +1,36 @@
+[Unit]
+Description=Highlands Latin School baseball scoreboard kiosk display on tty1
+Requires=scoreboard-local.service
+After=scoreboard-local.service systemd-user-sessions.service plymouth-quit-wait.service
+Before=graphical.target
+ConditionPathExists=/dev/tty0
+Wants=dbus.socket systemd-logind.service
+After=dbus.socket systemd-logind.service
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_GROUP__
+WorkingDirectory=__APP_ROOT__
+EnvironmentFile=-__APP_ROOT__/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_RUNTIME_DIR=/run/user/__APP_UID__
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+ExecStart=/bin/bash __APP_ROOT__/scripts/start-kiosk-session.sh
+ExecStartPost=+/usr/bin/chvt 1
+Restart=always
+RestartSec=3
+UtmpIdentifier=tty1
+UtmpMode=user
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+PAMName=scoreboard-display
+
+[Install]
+WantedBy=graphical.target

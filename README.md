@@ -1,20 +1,31 @@
 # Highlands Latin Baseball Scoreboard
 
-Local-only baseball scoreboard software for a Raspberry Pi Zero.
+Local-only baseball scoreboard software for a Raspberry Pi 4 Model B.
 
-The Pi hosts everything:
+The Flask app still serves the existing HTML/CSS/JS UI:
 
 - the display page at `/display`
 - the control page at `/control`
 - the JSON API at `/api/*`
 - a websocket at `/ws` for live, low-latency state sync
 
-The intended setup is:
+The deployment model is now Raspberry Pi OS Lite friendly:
 
-1. Raspberry Pi runs the Flask app on the local network.
-2. Chromium on the Pi opens the display in kiosk mode.
-3. The control iPad joins the same network and opens the control page directly from the Pi.
-4. State changes are persisted locally and pushed immediately to all connected clients over websocket.
+1. `scoreboard-local.service` starts the Flask app.
+2. `scoreboard-display.service` takes over `tty1` on boot.
+3. The display service starts Cage.
+4. Cage launches Chromium in kiosk mode against the local `/display` page.
+5. Phones and tablets on the LAN still use `/control` in a normal browser.
+
+## Supported target
+
+- Hardware: Raspberry Pi 4 Model B
+- OS image: Raspberry Pi OS Lite
+- Browser renderer: Chromium
+- Kiosk compositor: Cage
+- Primary display output: HDMI-0
+
+This repo does not use a desktop autostart file, LXDE, labwc session startup, or a logged-in GUI session anymore.
 
 ## Project structure
 
@@ -30,8 +41,11 @@ The intended setup is:
 |   |-- install.sh
 |   |-- install-fonts.sh
 |   |-- kiosk.sh
-|   `-- open-local.sh
+|   |-- open-local.sh
+|   `-- start-kiosk-session.sh
 |-- services/
+|   |-- scoreboard-display.pam
+|   |-- scoreboard-display.service
 |   `-- scoreboard-local.service
 |-- shared/
 |   `-- default-state.json
@@ -49,7 +63,7 @@ The intended setup is:
     `-- display.html
 ```
 
-## Architecture
+## Application architecture
 
 ### HTTP endpoints
 
@@ -64,15 +78,15 @@ The intended setup is:
 
 - `GET /ws`
 
-The websocket is the primary live transport now.
+The websocket remains the primary live transport.
 
 - Display pages subscribe and redraw instantly when state changes.
 - Control pages send updates over websocket when available.
-- HTTP writes remain as a fallback path if the socket is reconnecting.
+- HTTP writes remain as a fallback if the socket is reconnecting.
 
 ### Local persistence
 
-By default, runtime state is written to:
+Runtime state is written to:
 
 ```text
 runtime/scoreboard_state.json
@@ -108,13 +122,49 @@ Validation rules:
 - `out`: `0` through `2`
 - inning run values: non-negative integers
 
-## Raspberry Pi setup
+## Raspberry Pi OS Lite deployment
 
-These steps assume Raspberry Pi OS with desktop, Chromium, and LAN or Wi-Fi already working.
+These instructions assume a Raspberry Pi 4 B booted into Raspberry Pi OS Lite with network access working.
 
-1. Clone the repo onto the Pi, for example to `/home/pi/baseball-scoreboard`.
-2. Copy [`.env.example`](.env.example) to `.env`.
-3. Run:
+### 1. Clone the repo
+
+Example location:
+
+```bash
+cd ~
+git clone <your-repo-url> baseball-scoreboard
+cd ~/baseball-scoreboard
+cp .env.example .env
+```
+
+### 2. Apply the Pi display boot settings
+
+On Raspberry Pi 4 with the VC4 KMS driver, HDMI output selection is handled by Linux/KMS rather than by Cage or Chromium. For this kiosk, the safest practical default is to force the first DRM HDMI connector, which maps to the Pi 4 primary HDMI output.
+
+Connect the monitor to the Pi 4 HDMI-0 port, then verify these files.
+
+`/boot/firmware/config.txt`
+
+```ini
+dtoverlay=vc4-kms-v3d
+disable_overscan=1
+```
+
+`/boot/firmware/cmdline.txt`
+
+Keep everything on one line and add:
+
+```text
+consoleblank=0 video=HDMI-A-1:D
+```
+
+Notes:
+
+- `HDMI-A-1` is the first DRM HDMI connector and corresponds to HDMI-0 on Raspberry Pi 4.
+- If you need to force a specific mode, replace `video=HDMI-A-1:D` with something like `video=HDMI-A-1:1920x1080M@60D`.
+- If you intentionally want the other micro-HDMI port instead, use `HDMI-A-2`.
+
+### 3. Run the installer
 
 ```bash
 cd ~/baseball-scoreboard/scripts
@@ -123,16 +173,69 @@ cd ~/baseball-scoreboard/scripts
 
 The installer will:
 
-- create a Python virtual environment
-- install Flask and websocket support
-- install `unclutter` (or `unclutter-xfixes`) so the cursor disappears on the display after idle
-- install any bundled `.ttf` or `.otf` fonts from `public/fonts` into the Pi user's local font directory
-- create or normalize `.env`
-- install and start `scoreboard-local.service`
-- configure Raspberry Pi OS desktop autostart to open the local display on boot
-- create desktop launchers for the local display and local control
+- install Raspberry Pi OS Lite packages needed for the kiosk stack
+- create or update the Python virtual environment
+- install Python dependencies
+- install bundled fonts from `public/fonts`
+- normalize `.env`
+- install `scoreboard-local.service`
+- install `scoreboard-display.service`
+- install the PAM file Cage needs for the tty session
+- enable the services
+- set the default boot target to `graphical.target`
+- remove old desktop autostart and `.desktop` launcher artifacts if they exist
 
-## Manual setup
+`graphical.target` here does not mean a desktop environment. It is only used as the boot target that brings up the tty-based Cage kiosk service.
+
+### 4. Reboot
+
+```bash
+sudo reboot
+```
+
+After boot:
+
+- Flask should listen on `0.0.0.0:5050`
+- tty1 should start Cage
+- Chromium should open `http://127.0.0.1:5050/display`
+- the scoreboard should render on HDMI-0
+
+## Services
+
+### Flask app service
+
+- Unit: `scoreboard-local.service`
+- Runs from the repo root
+- Restarts automatically on failure
+
+Useful commands:
+
+```bash
+sudo systemctl status scoreboard-local.service
+sudo journalctl -u scoreboard-local.service -b
+sudo systemctl restart scoreboard-local.service
+```
+
+### Display kiosk service
+
+- Unit: `scoreboard-display.service`
+- Takes over `tty1`
+- Starts a full user session through PAM/systemd-logind
+- Launches `scripts/start-kiosk-session.sh`
+- Waits for the local Flask `/health` endpoint before starting Chromium
+- Restarts automatically on failure
+
+Useful commands:
+
+```bash
+sudo systemctl status scoreboard-display.service
+sudo journalctl -u scoreboard-display.service -b
+sudo systemctl restart scoreboard-display.service
+```
+
+`scripts/open-local.sh` is now a convenience wrapper that restarts `scoreboard-display.service`.
+
+## Manual app run
 
 ```bash
 cd ~/baseball-scoreboard
@@ -159,53 +262,45 @@ Supported local variables:
 - `SCHOOL_NAME`
 - `SCOREBOARD_STATE_FILE`
 
-Legacy `FALLBACK_*` environment names are still accepted by the Python app so old Pi installs do not break immediately, but the local-only names above are now the primary interface.
+Legacy `FALLBACK_*` environment names are still accepted by the Python app so old Pi installs do not break immediately, but the `SCOREBOARD_*` names above are the primary interface.
+
+## Chromium launch behavior
+
+The kiosk launcher keeps Chromium as the renderer for the existing web UI.
+
+- Chromium is not headless.
+- Cage is only the Wayland kiosk compositor.
+- Chromium opens the existing display route directly.
+- Startup suppresses first-run UI, restore bubbles, default-browser prompts, and infobars.
+- The display service waits for the local app before Chromium starts.
 
 ## Futura on Raspberry Pi
 
-The display stylesheet prefers Futura already, but Raspberry Pi OS will only use it if the font is actually present.
+The display stylesheet prefers Futura already, but Raspberry Pi OS will only use it if the font is present.
 
 1. Put your licensed Futura files in [`public/fonts/`](public/fonts/) using the documented filenames from [`public/fonts/README.md`](public/fonts/README.md).
 2. Re-run `~/baseball-scoreboard/scripts/install.sh` on the Pi.
-3. Relaunch the kiosk or reboot the Pi.
+3. Restart the kiosk or reboot the Pi.
 
-If you include `.ttf` or `.otf` files, the installer copies them into `~/.local/share/fonts/baseball-scoreboard` and refreshes the Pi font cache. If you include `.woff` or `.woff2` files with the documented names, Chromium can use them directly from the app even if they are not installed system-wide. The stylesheet now prefers `Futura Std Bold` for bold text and `Futura Std Medium` for normal text, with `Futura Std Light` as an acceptable fallback.
+If you include `.ttf` or `.otf` files, the installer copies them into `~/.local/share/fonts/baseball-scoreboard` and refreshes the font cache. If you include `.woff` or `.woff2` files with the documented names, Chromium can use them directly from the app even if they are not installed system-wide.
 
 ## Daily operation
 
-### Pi display
+### Local display
 
-The kiosk display URL is:
+The display service targets:
 
 ```text
 http://127.0.0.1:5050/display
 ```
 
-You can relaunch it with:
+To relaunch the kiosk session:
 
 ```bash
 ~/baseball-scoreboard/scripts/open-local.sh
 ```
 
-If the server starts but the display does not open on boot, check these first:
-
-- Raspberry Pi OS Lite will run the Flask server, but it will not open Chromium in kiosk mode because there is no desktop session.
-- Newer Raspberry Pi OS desktop releases use `~/.config/labwc/autostart` instead of the older LXDE autostart file. The installer now writes both locations.
-- Some images expose Chromium as `chromium` instead of `chromium-browser`. The kiosk script now checks both names.
-- The Chromium launcher now uses `--password-store=basic`, so kiosk startup should not trigger the locked desktop keyring prompt on Raspberry Pi OS autologin sessions.
-- If the mouse pointer still stays visible, verify `unclutter` installed successfully with `command -v unclutter`.
-
-Useful kiosk checks:
-
-```bash
-~/baseball-scoreboard/scripts/open-local.sh
-echo "$XDG_SESSION_TYPE"
-command -v chromium-browser || command -v chromium
-cat ~/.config/lxsession/LXDE-pi/autostart
-cat ~/.config/labwc/autostart
-```
-
-### iPad control
+### LAN control
 
 Find the Pi IP address:
 
@@ -213,17 +308,77 @@ Find the Pi IP address:
 hostname -I
 ```
 
-Then open this on the iPad while it is on the same network:
+Then open this from another device on the same network:
 
 ```text
 http://<pi-ip>:5050/control
 ```
 
-The local display URL on the LAN is:
+The display page is also reachable over the LAN at:
 
 ```text
 http://<pi-ip>:5050/display
 ```
+
+## Troubleshooting
+
+### Chromium never appears
+
+Check the display service logs:
+
+```bash
+sudo journalctl -u scoreboard-display.service -b
+```
+
+Then verify:
+
+- `command -v cage`
+- `command -v chromium-browser || command -v chromium`
+- `command -v dbus-run-session`
+- `curl -I http://127.0.0.1:5050/health`
+
+### Flask is up but the kiosk loops or exits
+
+Check both services:
+
+```bash
+sudo systemctl status scoreboard-local.service
+sudo systemctl status scoreboard-display.service
+```
+
+If the display service complains about permissions or sessions, confirm that:
+
+- `/etc/pam.d/scoreboard-display` exists
+- the app user is in the `video`, `render`, and `input` groups
+- you rebooted after changing group membership
+
+### Screen stays black on Lite
+
+Check the boot display settings:
+
+```bash
+cat /boot/firmware/config.txt
+cat /boot/firmware/cmdline.txt
+```
+
+On Pi OS Lite, `consoleblank=0` belongs in `cmdline.txt`, not in a desktop power-management setting.
+
+To confirm which HDMI connectors the kernel sees:
+
+```bash
+ls -1 /sys/class/drm/card?-HDMI-A-?
+```
+
+Expected on a Pi 4:
+
+- `HDMI-A-1` for HDMI-0
+- `HDMI-A-2` for HDMI-1
+
+### Display is on the wrong monitor
+
+Make sure the cable is connected to HDMI-0 and confirm `cmdline.txt` contains `video=HDMI-A-1:D`.
+
+If you intentionally need the second port, switch that to `video=HDMI-A-2:D`.
 
 ## Backups
 
@@ -232,12 +387,15 @@ The control page includes:
 - `Download backup`
 - `Import backup`
 
-That lets you snapshot the current local game state and restore it later if needed.
+That lets you snapshot the current local game state and restore it later.
 
 ## Verification
 
-Useful local checks:
+Useful checks after install:
 
 ```bash
-python -m py_compile app.py
+python3 -m py_compile app.py
+sudo systemctl is-enabled scoreboard-local.service scoreboard-display.service
+sudo systemctl status scoreboard-local.service scoreboard-display.service
+curl -I http://127.0.0.1:5050/health
 ```

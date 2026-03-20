@@ -16,12 +16,16 @@ else
 fi
 
 KIOSK_MODE="0"
+DETACH_MODE="0"
 TARGET_URL=""
 
 for arg in "$@"; do
   case "${arg}" in
     --kiosk)
       KIOSK_MODE="1"
+      ;;
+    --detach)
+      DETACH_MODE="1"
       ;;
     *)
       TARGET_URL="${arg}"
@@ -30,36 +34,42 @@ for arg in "$@"; do
 done
 
 if [ -z "${TARGET_URL}" ]; then
-  echo "Usage: $(basename "$0") [--kiosk] <url>" >&2
+  echo "Usage: $(basename "$0") [--detach] [--kiosk] <url>" >&2
   exit 1
 fi
 
 mkdir -p "${CHROMIUM_PROFILE_DIR}"
-
-if [ "${KIOSK_MODE}" = "1" ] && command -v unclutter >/dev/null 2>&1; then
-  pkill -x unclutter >/dev/null 2>&1 || true
-  unclutter -idle 0.5 -root >/dev/null 2>&1 &
-fi
 
 CHROMIUM_ARGS=(
   --app="${TARGET_URL}"
   --noerrdialogs
   --no-first-run
   --disable-infobars
-  --overscroll-history-navigation=0
   --check-for-update-interval=31536000
   --password-store=basic
   --disable-session-crashed-bubble
-  --disable-features=MediaRouter
+  --disable-features=MediaRouter,Translate
+  --disable-component-update
   --no-default-browser-check
   --user-data-dir="${CHROMIUM_PROFILE_DIR}"
 )
 
-if [ "${KIOSK_MODE}" = "1" ]; then
+if [ -n "${WAYLAND_DISPLAY:-}" ]; then
   CHROMIUM_ARGS+=(
-    --kiosk
-    --window-size=768,192
+    --enable-features=UseOzonePlatform
+    --ozone-platform=wayland
   )
 fi
 
-"${CHROMIUM_BIN}" "${CHROMIUM_ARGS[@]}" >/dev/null 2>&1 &
+if [ "${KIOSK_MODE}" = "1" ]; then
+  CHROMIUM_ARGS+=(
+    --kiosk
+  )
+fi
+
+if [ "${DETACH_MODE}" = "1" ]; then
+  "${CHROMIUM_BIN}" "${CHROMIUM_ARGS[@]}" >/dev/null 2>&1 &
+  exit 0
+fi
+
+exec "${CHROMIUM_BIN}" "${CHROMIUM_ARGS[@]}"

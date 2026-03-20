@@ -66,18 +66,19 @@ body.display-page *::after {
 }
 
 .display-shell {
-  width: 100vw;
-  height: 100vh;
-  display: grid;
-  place-items: center;
-  background: var(--navy);
+  position: fixed;
+  inset: 0;
   overflow: hidden;
+  background: var(--navy);
 }
 
 .display-frame {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: 768px;
   height: 192px;
-  transform-origin: center center;
+  transform-origin: top left;
 }
 
 .scoreboard-display {
@@ -891,6 +892,187 @@ body.display-page *::after {
 
   .status-note {
     text-align: center;
+  }
+}
+
+@media (min-width: 561px) and (max-width: 760px) {
+  .control-toolbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .history-button-row {
+    grid-column: 1 / span 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-page-menu {
+    grid-column: 3;
+    justify-self: stretch;
+  }
+
+  .control-page-menu .menu-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .counts-panel-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .inning-flow-row {
+    grid-template-columns: 64px minmax(0, 1fr) 64px;
+  }
+
+  .at-bat-flow-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flow-next-button {
+    grid-column: 1 / -1;
+  }
+
+  .control-stepper-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .stepper-row {
+    grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+  }
+
+  .utility-grid,
+  .auth-dialog-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inning-editor {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .control-page {
+    padding: 10px;
+  }
+
+  .control-toolbar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .control-shell,
+  .control-preview-panel,
+  .control-main-panel,
+  .counts-panel,
+  .flow-card {
+    gap: 10px;
+  }
+
+  .panel,
+  .control-main-panel,
+  .counts-panel,
+  .flow-card,
+  .auth-dialog-card,
+  .utility-sheet-card {
+    padding: 10px;
+  }
+
+  .history-button-row {
+    grid-column: 1 / span 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-page-menu {
+    grid-column: 3;
+  }
+
+  .counts-panel-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .menu-button,
+  .menu-popover-button,
+  .action-button,
+  .text-input,
+  .inning-input,
+  .meta-chip {
+    min-height: 48px;
+  }
+
+  .menu-button,
+  .menu-popover-button {
+    padding: 0.7rem 0.8rem;
+    font-size: 0.88rem;
+  }
+
+  .control-page-menu .menu-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .menu-popover {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+
+  .inning-flow-row {
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
+  }
+
+  .at-bat-flow-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .flow-next-button {
+    grid-column: 1 / -1;
+  }
+
+  .flow-team-button,
+  .inning-label,
+  .flow-next-button,
+  .inning-button,
+  .stepper-row .stepper-button,
+  .stepper-value {
+    min-height: 56px;
+  }
+
+  .flow-team-button {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .flow-team-label,
+  .inning-label {
+    font-size: 0.96rem;
+    letter-spacing: 0.08em;
+  }
+
+  .stepper-card {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .stepper-card h2 {
+    font-size: 0.92rem;
+  }
+
+  .stepper-row {
+    grid-template-columns: minmax(0, 1fr) 52px minmax(0, 1fr);
+  }
+
+  .stepper-button {
+    min-height: 56px;
+    padding: 0.65rem 0.5rem;
+    font-size: 1.8rem;
+  }
+
+  .stepper-value {
+    font-size: 1.55rem;
+  }
+
+  .status-note {
+    font-size: 0.82rem;
   }
 }
 
