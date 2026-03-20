@@ -87,6 +87,7 @@ HOME_DIR="${HOME_DIR:-/home/$(id -un)}"
 export XCURSOR_PATH="${HOME_DIR}/.local/share/icons:/usr/share/icons"
 export XCURSOR_THEME="scoreboard-invisible"
 export XCURSOR_SIZE="24"
+export WLR_NO_HARDWARE_CURSORS="1"
 
 mkdir -p "${APP_ROOT}/runtime"
 disable_console_blanking "/dev/tty1"

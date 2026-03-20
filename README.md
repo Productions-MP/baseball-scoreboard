@@ -280,6 +280,7 @@ The kiosk launcher keeps Chromium as the renderer for the existing web UI.
 - Cage is only the Wayland kiosk compositor.
 - Chromium opens the existing display route directly.
 - The kiosk session exports an invisible Xcursor theme so the centered compositor cursor does not stay on screen.
+- The kiosk session also forces wlroots software cursors for Raspberry Pi compatibility when hardware cursors ignore that theme.
 - Startup suppresses first-run UI, restore bubbles, default-browser prompts, and infobars.
 - The display service waits for the local app before Chromium starts.
 
