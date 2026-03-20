@@ -1,6 +1,6 @@
 :root {
   --control-page-padding: 14px;
-  --bg: #07131f;
+  --bg: #000000;
   --bg-strong: #030b12;
   --bg-soft: #0d1b2b;
   --navy: #0c2340;
@@ -41,12 +41,15 @@ html,
 body {
   margin: 0;
   padding: 0;
+  background: var(--bg);
 }
 
 body {
   font-family: var(--font-body);
   color: var(--ink);
   background: var(--bg);
+  min-height: 100vh;
+  min-height: 100svh;
 }
 
 button,
@@ -69,7 +72,7 @@ body.display-page *::after {
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--navy);
+  background: var(--bg);
 }
 
 .display-frame {
@@ -317,7 +320,9 @@ body.display-page *::after {
 .control-page {
   padding: var(--control-page-padding);
   font-family: var(--font-ui);
-  background: var(--bg-strong);
+  background: #000000;
+  min-height: 100vh;
+  min-height: 100svh;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -458,13 +463,15 @@ body.display-page *::after {
 .control-page-menu {
   position: relative;
   justify-self: end;
+  min-width: 0;
 }
 
 .menu-popover {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  width: 220px;
+  width: min(220px, calc(100vw - (var(--control-page-padding) * 2)));
+  max-width: calc(100vw - (var(--control-page-padding) * 2));
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -473,6 +480,7 @@ body.display-page *::after {
   border: 1px solid rgba(174, 145, 66, 0.32);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.28);
   z-index: 20;
+  box-sizing: border-box;
 }
 
 .menu-popover[hidden] {
@@ -482,6 +490,8 @@ body.display-page *::after {
 .menu-popover-button {
   background: rgba(255, 255, 255, 0.03);
   text-align: left;
+  width: 100%;
+  min-width: 0;
 }
 
 .danger-text {
@@ -1011,9 +1021,10 @@ body.display-page *::after {
   }
 
   .menu-popover {
-    left: 0;
+    left: auto;
     right: 0;
-    width: auto;
+    width: min(220px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
   }
 
   .inning-flow-row {

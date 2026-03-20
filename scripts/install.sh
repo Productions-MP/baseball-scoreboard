@@ -114,7 +114,7 @@ if [ -d "${LEGACY_ROOT}/runtime" ] && [ ! -d "${APP_ROOT}/runtime" ]; then
 fi
 
 if command -v apt-get >/dev/null 2>&1; then
-  install_apt_packages python3 python3-venv python3-pip dbus-user-session cage curl
+  install_apt_packages python3 python3-venv python3-pip dbus-user-session cage curl x11-apps
 
   if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
     if ! install_apt_packages chromium-browser; then
@@ -184,6 +184,7 @@ PY
 
 chmod +x "${APP_ROOT}/scripts/"*.sh
 "${APP_ROOT}/scripts/install-fonts.sh"
+run_as_app_user "${APP_ROOT}/scripts/install-invisible-cursor-theme.sh"
 
 render_template "${LOCAL_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-local.service"
 render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-display.service"

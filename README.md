@@ -126,6 +126,12 @@ Validation rules:
 
 These instructions assume a Raspberry Pi 4 B booted into Raspberry Pi OS Lite with network access working.
 
+### 0. Install git
+```bash
+sudo apt update
+sudo apt install git -y
+```
+
 ### 1. Clone the repo
 
 Example location:
@@ -168,6 +174,7 @@ Notes:
 
 ```bash
 cd ~/baseball-scoreboard/scripts
+chmod +x *.sh
 ./install.sh
 ```
 
@@ -177,6 +184,7 @@ The installer will:
 - create or update the Python virtual environment
 - install Python dependencies
 - install bundled fonts from `public/fonts`
+- generate an invisible cursor theme for the kiosk user
 - normalize `.env`
 - install `scoreboard-local.service`
 - install `scoreboard-display.service`
@@ -271,6 +279,7 @@ The kiosk launcher keeps Chromium as the renderer for the existing web UI.
 - Chromium is not headless.
 - Cage is only the Wayland kiosk compositor.
 - Chromium opens the existing display route directly.
+- The kiosk session exports an invisible Xcursor theme so the centered compositor cursor does not stay on screen.
 - Startup suppresses first-run UI, restore bubbles, default-browser prompts, and infobars.
 - The display service waits for the local app before Chromium starts.
 
@@ -351,6 +360,20 @@ If the display service complains about permissions or sessions, confirm that:
 - `/etc/pam.d/scoreboard-display` exists
 - the app user is in the `video`, `render`, and `input` groups
 - you rebooted after changing group membership
+
+### Cursor is still visible
+
+Confirm the invisible cursor theme exists for the kiosk user:
+
+```bash
+ls -R ~/.local/share/icons/scoreboard-invisible
+```
+
+Then restart the display service:
+
+```bash
+~/baseball-scoreboard/scripts/open-local.sh
+```
 
 ### Screen stays black on Lite
 
