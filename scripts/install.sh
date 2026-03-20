@@ -114,7 +114,7 @@ if [ -d "${LEGACY_ROOT}/runtime" ] && [ ! -d "${APP_ROOT}/runtime" ]; then
 fi
 
 if command -v apt-get >/dev/null 2>&1; then
-  install_apt_packages python3 python3-venv python3-pip dbus-user-session cage curl x11-apps
+  install_apt_packages python3 python3-venv python3-pip dbus-user-session cage curl x11-apps wlrctl
 
   if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
     if ! install_apt_packages chromium-browser; then

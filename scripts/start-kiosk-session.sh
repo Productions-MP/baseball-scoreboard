@@ -97,4 +97,4 @@ if ! wait_for_http "${HEALTH_URL}" "${WAIT_ATTEMPTS}"; then
   exit 1
 fi
 
-exec dbus-run-session -- cage -- "${SCRIPT_DIR}/browser-app.sh" --kiosk "${TARGET_URL}"
+exec dbus-run-session -- cage -- "${SCRIPT_DIR}/run-cage-browser.sh" "${TARGET_URL}"

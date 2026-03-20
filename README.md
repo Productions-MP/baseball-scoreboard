@@ -42,6 +42,7 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 |   |-- install-fonts.sh
 |   |-- kiosk.sh
 |   |-- open-local.sh
+|   |-- run-cage-browser.sh
 |   `-- start-kiosk-session.sh
 |-- services/
 |   |-- scoreboard-display.pam
@@ -281,6 +282,7 @@ The kiosk launcher keeps Chromium as the renderer for the existing web UI.
 - Chromium opens the existing display route directly.
 - The kiosk session exports an invisible Xcursor theme so the centered compositor cursor does not stay on screen.
 - The kiosk session also forces wlroots software cursors for Raspberry Pi compatibility when hardware cursors ignore that theme.
+- The kiosk command parks the pointer in the bottom-right corner with `wlrctl` after Chromium appears, because current Cage releases do not offer a reliable built-in cursor-hide path for this kiosk use case.
 - Startup suppresses first-run UI, restore bubbles, default-browser prompts, and infobars.
 - The display service waits for the local app before Chromium starts.
 
