@@ -179,6 +179,17 @@
     );
   }
 
+  function runSystemAction(action) {
+    return requestJson(
+      getConfig().endpoints.systemAction,
+      {
+        method: "POST",
+        body: JSON.stringify({ action: action }),
+      },
+      true
+    );
+  }
+
   function buildBackupFilename() {
     return "scoreboard-backup-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
   }
@@ -319,6 +330,7 @@
     getConfig: getConfig,
     getControlKey: getControlKey,
     resetState: resetState,
+    runSystemAction: runSystemAction,
     serializeState: serializeState,
     setControlKey: setControlKey,
     updateState: updateState,

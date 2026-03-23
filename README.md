@@ -39,7 +39,6 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 |-- requirements.txt
 |-- scripts/
 |   |-- browser-app.sh
-|   |-- ignore-libinput-device.sh
 |   |-- install.sh
 |   |-- install-fonts.sh
 |   |-- kiosk.sh
@@ -191,9 +190,7 @@ The installer will:
 - create or update the Python virtual environment
 - install Python dependencies
 - install StreamDeck build/runtime dependencies
-- install input-debugging tools used to identify stray pointer devices
 - install bundled fonts from `public/fonts`
-- generate an invisible cursor theme for the kiosk user
 - normalize `.env`
 - install `scoreboard-local.service`
 - install `scoreboard-display.service`
@@ -308,8 +305,6 @@ The kiosk launcher keeps Chromium as the renderer for the existing web UI.
 - Chromium is not headless.
 - Cage is only the Wayland kiosk compositor.
 - Chromium opens the existing display route directly.
-- The kiosk session exports an invisible Xcursor theme so the centered compositor cursor does not stay on screen.
-- The kiosk session also forces wlroots software cursors for Raspberry Pi compatibility when hardware cursors ignore that theme.
 - The kiosk command parks the pointer in the bottom-right corner with `wlrctl` after Chromium appears, because current Cage releases do not offer a reliable built-in cursor-hide path for this kiosk use case.
 - Startup suppresses first-run UI, restore bubbles, default-browser prompts, and infobars.
 - The display service waits for the local app before Chromium starts.
@@ -378,14 +373,14 @@ Admin page layout:
 
 ```text
 | Back     | Refresh  | Reset Game | State      | Count    |
-| Restart  | Reboot Pi| Shutdown Pi| Guest Tot. | Home Tot.|
+| Restart App | Reboot Board | Shutdown Board | Guest Tot. | Home Tot.|
 | Updated  | Device   | blank      | blank      | Status   |
 ```
 
 Notes:
 
-- `Restart` restarts both `scoreboard-local.service` and `scoreboard-display.service`.
-- `Reset Game`, `Restart`, `Reboot Pi`, and `Shutdown Pi` require a second button press within the confirmation window before they run.
+- `Restart App` restarts both `scoreboard-local.service` and `scoreboard-display.service`.
+- `Reset Game`, `Restart App`, `Reboot Board`, and `Shutdown Board` require a second button press within the confirmation window before they run.
 - Scoreboard buttons use the same local control key as the browser UI, pulled from `.env`.
 
 ## Troubleshooting
@@ -437,40 +432,22 @@ Then verify:
 
 ### Cursor is still visible
 
-Confirm the invisible cursor theme exists for the kiosk user:
-
-```bash
-ls -R ~/.local/share/icons/scoreboard-invisible
-```
-
-Then restart the display service:
+Restart the display service:
 
 ```bash
 ~/baseball-scoreboard/scripts/open-local.sh
 ```
 
-If the cursor still remains visible and responds to `wlrctl pointer move ...`, the more likely root cause is that libinput is exposing a non-mouse device as a pointer. This is common with kiosk hardware that exposes HDMI-CEC or other HID-style devices.
-
-List pointer-capable libinput devices:
+You can also verify the pointer parking manually from the live Wayland session:
 
 ```bash
-~/baseball-scoreboard/scripts/ignore-libinput-device.sh list
+export XDG_RUNTIME_DIR=/run/user/1000
+export WAYLAND_DISPLAY="$(basename "$(ls /run/user/1000/wayland-* | head -n 1)")"
+wlrctl pointer move 100000 100000
+wlrctl pointer move 100000 100000
 ```
 
-Preview a udev rule for a suspicious event device:
-
-```bash
-~/baseball-scoreboard/scripts/ignore-libinput-device.sh preview /dev/input/eventX
-```
-
-Install that ignore rule:
-
-```bash
-sudo ~/baseball-scoreboard/scripts/ignore-libinput-device.sh apply /dev/input/eventX
-sudo reboot
-```
-
-This uses libinput's supported `LIBINPUT_IGNORE_DEVICE` udev property, which causes libinput to ignore that device entirely.
+This default behavior is intentionally simple and plug-and-play. It keeps possible HDMI-CEC or other non-mouse input sources available instead of disabling them at the libinput level.
 
 ### Screen stays black on Lite
 

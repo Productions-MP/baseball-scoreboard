@@ -65,7 +65,7 @@
 
         <div class="counts-panel">
           <div class="counts-panel-header">
-            <p class="section-label">Count And Runs</p>
+            <p class="section-label">Count, Outs And Runs</p>
             <span class="meta-chip" id="out-chip">Outs 0</span>
           </div>
 
@@ -85,6 +85,15 @@
                 <button class="stepper-button bottom-stepper-button" type="button" data-action="strike-down">-</button>
                 <div class="stepper-value" id="strike-value">0</div>
                 <button class="stepper-button top-stepper-button" type="button" data-action="strike-up">+</button>
+              </div>
+            </div>
+
+            <div class="stepper-card">
+              <h2>Outs</h2>
+              <div class="stepper-row">
+                <button class="stepper-button bottom-stepper-button" type="button" data-action="out-down">-</button>
+                <div class="stepper-value" id="out-value">0</div>
+                <button class="stepper-button top-stepper-button" type="button" data-action="out-up">+</button>
               </div>
             </div>
 
@@ -126,16 +135,27 @@
       <div class="overlay-card utility-sheet-card">
         <div class="utility-sheet-header">
           <div>
-            <p class="eyebrow">Utilities</p>
-            <h2>Backups</h2>
+            <h2>Utilities</h2>
           </div>
           <button id="close-utilities-button" class="menu-button" type="button">Close</button>
         </div>
 
+        <div class="section-heading utility-section-heading">
+          <h2>Backups And Reset</h2>
+        </div>
         <div class="utility-grid">
           <button class="action-button" type="button" id="download-backup-button">Download backup</button>
           <button class="action-button" type="button" id="import-backup-button">Import backup</button>
           <button class="action-button danger-button" type="button" id="reset-game-button">Reset game</button>
+        </div>
+
+        <div class="section-heading utility-section-heading">
+          <h2>System Controls</h2>
+        </div>
+        <div class="utility-grid">
+          <button class="action-button primary-button" type="button" id="restart-system-button">Restart Application</button>
+          <button class="action-button danger-button" type="button" id="reboot-pi-button">Reboot Scoreboard</button>
+          <button class="action-button danger-button" type="button" id="shutdown-pi-button">Shutdown Scoreboard</button>
         </div>
 
         <div class="section-heading utility-section-heading">
@@ -155,6 +175,7 @@
           getState: "/api/state",
           updateState: "/api/state",
           resetState: "/api/reset",
+          systemAction: "/api/system",
           websocket: "/ws"
         }
       };

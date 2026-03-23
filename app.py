@@ -1,6 +1,9 @@
 import hmac
 import json
+import logging
 import os
+import shutil
+import subprocess
 import threading
 from datetime import datetime, timezone
 
@@ -16,11 +19,27 @@ ENV_FILES = (
     os.path.join(BASE_DIR, ".env"),
 )
 MODE_NAME = "scoreboard"
+LOGGER = logging.getLogger("scoreboard-web")
 
 STATE_LOCK = threading.Lock()
 CLIENTS_LOCK = threading.Lock()
 SEND_LOCK = threading.Lock()
 WS_CLIENTS = set()
+
+SYSTEM_ACTIONS = {
+    "restart-scoreboard": {
+        "command": ["systemctl", "restart", "scoreboard-local.service", "scoreboard-display.service"],
+        "message": "Restart Application requested. The controller may disconnect while the scoreboard restarts.",
+    },
+    "reboot-pi": {
+        "command": ["shutdown", "-r", "now"],
+        "message": "Reboot Scoreboard requested. The Pi will disconnect while it restarts.",
+    },
+    "shutdown-pi": {
+        "command": ["shutdown", "now"],
+        "message": "Shutdown Scoreboard requested. The Pi will power off shortly.",
+    },
+}
 
 def load_env_file(path):
     if not os.path.exists(path):
@@ -233,6 +252,46 @@ def parse_action_name(value):
     return action_name
 
 
+def parse_system_action(value):
+    action_name = parse_action_name(value)
+
+    if action_name not in SYSTEM_ACTIONS:
+        raise ValueError("Unsupported system action.")
+
+    return action_name
+
+
+def run_system_command_async(action_name):
+    if os.name != "posix":
+        raise RuntimeError("System actions are only supported on the Raspberry Pi host.")
+
+    action = SYSTEM_ACTIONS[action_name]
+    base_command = action["command"]
+    executable = shutil.which(base_command[0])
+
+    if not executable:
+        raise RuntimeError(f"{base_command[0]} is not available on this host.")
+
+    command = [executable, *base_command[1:]]
+
+    def launch():
+        try:
+            LOGGER.info("Running system action %s: %s", action_name, " ".join(command))
+            subprocess.run(command, check=True, start_new_session=True)
+        except Exception:
+            LOGGER.exception("System action %s failed", action_name)
+
+    timer = threading.Timer(0.25, launch)
+    timer.daemon = True
+    timer.start()
+
+    return {
+        "ok": True,
+        "action": action_name,
+        "message": action["message"],
+    }
+
+
 def handle_socket_message(raw_message):
     try:
         payload = json.loads(raw_message or "{}")
@@ -373,6 +432,29 @@ def reset_api():
     saved = write_state(clone_default_state())
     broadcast_state(saved)
     return jsonify(api_payload(saved))
+
+
+@app.post("/api/system")
+def system_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    payload = request.get_json(silent=True) or {}
+
+    if not isinstance(payload, dict):
+        return jsonify(error_message("System action payload must be a JSON object.")), 400
+
+    try:
+        action_name = parse_system_action(payload.get("action"))
+        accepted = run_system_command_async(action_name)
+    except ValueError as error:
+        return jsonify(error_message(str(error))), 400
+    except RuntimeError as error:
+        return jsonify(error_message(str(error), status=503)), 503
+
+    return jsonify(accepted)
 
 
 @sock.route("/ws")

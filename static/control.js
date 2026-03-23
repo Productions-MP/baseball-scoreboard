@@ -23,6 +23,7 @@
   const liveInningLabel = document.getElementById("live-inning-label");
   const ballValue = document.getElementById("ball-value");
   const strikeValue = document.getElementById("strike-value");
+  const outValue = document.getElementById("out-value");
   const currentRunsValue = document.getElementById("current-runs-value");
   const outChip = document.getElementById("out-chip");
   const guestBatButton = document.getElementById("guest-bat-button");
@@ -32,6 +33,9 @@
   const inningEditor = document.getElementById("inning-editor");
   const saveNote = document.getElementById("save-note");
   const backupFileInput = document.getElementById("backup-file-input");
+  const restartSystemButton = document.getElementById("restart-system-button");
+  const rebootPiButton = document.getElementById("reboot-pi-button");
+  const shutdownPiButton = document.getElementById("shutdown-pi-button");
 
   let state = core.cloneDefaultState();
   let saveInFlight = false;
@@ -165,6 +169,7 @@
     liveInningLabel.textContent = "Inning " + derived.inning;
     ballValue.textContent = String(derived.ball);
     strikeValue.textContent = String(derived.strike);
+    outValue.textContent = String(derived.out);
     currentRunsValue.textContent = String(battingRuns);
     outChip.textContent = "Outs " + derived.out;
 
@@ -475,6 +480,12 @@
           nextState.strike += 1;
         }
         break;
+      case "out-down":
+        nextState.out = Math.max(0, nextState.out - 1);
+        break;
+      case "out-up":
+        recordOut(nextState);
+        break;
       case "current-runs-down":
         adjustCurrentBattingRuns(nextState, -1);
         break;
@@ -554,6 +565,34 @@
     authDismissed = false;
     render();
     setStatusMessage("Control password saved in this browser.", false);
+  }
+
+  async function runSystemAction(actionName, actionLabel, confirmationMessage, connectionLabel) {
+    const confirmed = window.confirm(confirmationMessage);
+
+    if (!confirmed) {
+      return;
+    }
+
+    if (config.requireKey && !core.getControlKey()) {
+      authDismissed = false;
+      render();
+      setStatusMessage("Enter the control password to use system controls.", true);
+      return;
+    }
+
+    try {
+      const payload = await core.runSystemAction(actionName);
+      setConnectionState(connectionLabel, true);
+      setStatusMessage(payload.message || actionLabel + " requested.", false);
+      closeUtilities();
+    } catch (error) {
+      if (error.status === 401) {
+        handleControlKeyRejected(actionLabel);
+      } else {
+        setStatusMessage(actionLabel + " failed: " + error.message, true);
+      }
+    }
   }
 
   document.addEventListener("click", function onDocumentClick(event) {
@@ -697,6 +736,33 @@
         setStatusMessage("Reset failed: " + error.message, true);
       }
     }
+  });
+
+  restartSystemButton.addEventListener("click", function onRestartSystem() {
+    runSystemAction(
+      "restart-scoreboard",
+      "Restart Application",
+      "Restart the scoreboard application and display now? The controller may disconnect for a moment.",
+      "APPLICATION RESTARTING"
+    );
+  });
+
+  rebootPiButton.addEventListener("click", function onRebootPi() {
+    runSystemAction(
+      "reboot-pi",
+      "Reboot Scoreboard",
+      "Reboot the scoreboard now? This restarts the Raspberry Pi and disconnects all controllers until boot finishes.",
+      "SCOREBOARD REBOOTING"
+    );
+  });
+
+  shutdownPiButton.addEventListener("click", function onShutdownPi() {
+    runSystemAction(
+      "shutdown-pi",
+      "Shutdown Scoreboard",
+      "Shut down the scoreboard now? This powers off the Raspberry Pi, and you will need to turn it back on manually.",
+      "SCOREBOARD SHUTDOWN"
+    );
   });
 
   buildInningEditor();
