@@ -117,6 +117,10 @@
         ) + "px";
     }
 
+    function shouldHideRun(run, index, state) {
+      return settings.hideFutureInnings && index + 1 > state.inning && Number(run) <= 0;
+    }
+
     return {
       render: function render(state) {
         const hasOvertime =
@@ -125,12 +129,12 @@
           (Array.isArray(state.home_runs) && Number(state.home_runs[9]) > 0);
 
         state.guest_runs.forEach(function renderGuest(run, index) {
-          const shouldHideFutureInning = settings.hideFutureInnings && index + 1 > state.inning;
+          const shouldHideFutureInning = shouldHideRun(run, index, state);
           setCell("guest-run-" + index, shouldHideFutureInning ? "" : run);
         });
 
         state.home_runs.forEach(function renderHome(run, index) {
-          const shouldHideFutureInning = settings.hideFutureInnings && index + 1 > state.inning;
+          const shouldHideFutureInning = shouldHideRun(run, index, state);
           setCell("home-run-" + index, shouldHideFutureInning ? "" : run);
         });
 

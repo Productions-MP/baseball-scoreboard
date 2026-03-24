@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 from flask_sock import Sock
 from simple_websocket import ConnectionClosed
-from shared.scoreboard_core import apply_action, clone_default_state, merge_state, normalize_state, with_derived
+from shared.scoreboard_core import apply_action, build_reset_state, clone_default_state, merge_state, normalize_state, with_derived
 from shared.scoreboard_designs import DEFAULT_SCOREBOARD_DESIGN_ID, get_scoreboard_design, list_scoreboard_designs
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -367,7 +367,7 @@ def handle_socket_message(raw_message):
         if not control_key_is_valid(payload.get("control_key", "")):
             return error_message("Unauthorized. Provide a valid control key.", status=401, request_id=request_id)
 
-        saved = write_state(clone_default_state())
+        saved = write_state(build_reset_state(read_state()))
         broadcast_state(saved, request_id=request_id)
         return None
 
@@ -473,7 +473,7 @@ def reset_api():
     if auth_error:
         return auth_error
 
-    saved = write_state(clone_default_state())
+    saved = write_state(build_reset_state(read_state()))
     broadcast_state(saved)
     return jsonify(api_payload(saved))
 

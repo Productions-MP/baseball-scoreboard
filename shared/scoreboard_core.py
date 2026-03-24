@@ -18,6 +18,17 @@ def clone_default_state():
     return deepcopy(DEFAULT_STATE)
 
 
+def build_reset_state(current_state=None):
+    reset_state = clone_default_state()
+
+    if isinstance(current_state, dict):
+        reset_state["design_id"] = normalize_design_id(
+            current_state.get("design_id", current_state.get("scoreboard_design_id"))
+        )
+
+    return normalize_state(reset_state)
+
+
 def to_int(value, fallback=0):
     try:
         return int(value)

@@ -146,89 +146,92 @@
     <section class="overlay overlay-sheet" id="utilities-overlay" hidden>
       <div class="overlay-card utility-sheet-card">
         <div class="utility-sheet-header">
-          <div>
+          <div class="utility-sheet-header-copy">
             <h2>Utilities</h2>
           </div>
           <button id="close-utilities-button" class="menu-button" type="button">Close</button>
         </div>
 
-        <div class="section-heading utility-section-heading">
-          <h2>Scoreboard Design</h2>
-        </div>
-        <div class="design-picker-card">
-          <div class="design-picker-heading">
-            <p class="section-label">Current Selection</p>
-            <p class="inline-note" id="design-dimensions-note">
-              {{ initial_state.design.label }} ({{ initial_state.design.width }}x{{ initial_state.design.height }})
-            </p>
-          </div>
-          <div class="design-picker-field">
-            <span class="design-picker-label" id="scoreboard-design-label">Template</span>
-            <div class="custom-select" id="scoreboard-design-picker">
-              <select id="scoreboard-design-select" class="select-input-native" aria-hidden="true" tabindex="-1">
-                {% for design in scoreboard_designs %}
-                  <option value="{{ design.id }}" {% if design.id == initial_state.design_id %}selected{% endif %}>
-                    {{ design.label }} ({{ design.width }}x{{ design.height }})
-                  </option>
-                {% endfor %}
-              </select>
-              <button
-                id="scoreboard-design-trigger"
-                class="select-input custom-select-trigger"
-                type="button"
-                aria-haspopup="listbox"
-                aria-expanded="false"
-                aria-labelledby="scoreboard-design-label scoreboard-design-trigger-text"
-              >
-                <span id="scoreboard-design-trigger-text"></span>
-              </button>
-              <div
-                id="scoreboard-design-menu"
-                class="custom-select-menu"
-                role="listbox"
-                aria-labelledby="scoreboard-design-label"
-                hidden
-              >
-                {% for design in scoreboard_designs %}
-                  <button
-                    type="button"
-                    class="custom-select-option"
-                    data-design-option
-                    data-value="{{ design.id }}"
-                    role="option"
-                    aria-selected="{% if design.id == initial_state.design_id %}true{% else %}false{% endif %}"
-                  >
-                    <span class="custom-select-option-label">{{ design.label }}</span>
-                    <span class="custom-select-option-meta">{{ design.width }}x{{ design.height }}</span>
-                  </button>
-                {% endfor %}
+        <div class="utility-layout">
+          <div class="utility-stack">
+            <section class="utility-section-card design-picker-card">
+              <div class="utility-card-header">
+                <h2>Design</h2>
               </div>
-            </div>
+              <div class="design-picker-field">
+                <div class="custom-select" id="scoreboard-design-picker">
+                  <select id="scoreboard-design-select" class="select-input-native" aria-hidden="true" tabindex="-1">
+                    {% for design in scoreboard_designs %}
+                      <option value="{{ design.id }}" {% if design.id == initial_state.design_id %}selected{% endif %}>
+                        {{ design.label }} ({{ design.width }}x{{ design.height }})
+                      </option>
+                    {% endfor %}
+                  </select>
+                  <button
+                    id="scoreboard-design-trigger"
+                    class="select-input custom-select-trigger"
+                    type="button"
+                    aria-haspopup="listbox"
+                    aria-expanded="false"
+                    aria-label="Scoreboard design"
+                  >
+                    <span id="scoreboard-design-trigger-text"></span>
+                  </button>
+                  <div
+                    id="scoreboard-design-menu"
+                    class="custom-select-menu"
+                    role="listbox"
+                    aria-label="Scoreboard design options"
+                    hidden
+                  >
+                    {% for design in scoreboard_designs %}
+                      <button
+                        type="button"
+                        class="custom-select-option"
+                        data-design-option
+                        data-value="{{ design.id }}"
+                        role="option"
+                        aria-selected="{% if design.id == initial_state.design_id %}true{% else %}false{% endif %}"
+                      >
+                        <span class="custom-select-option-label">{{ design.label }}</span>
+                        <span class="custom-select-option-meta">{{ design.width }}x{{ design.height }}</span>
+                      </button>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="utility-section-card">
+              <div class="utility-card-header">
+                <h2>Backup / Reset</h2>
+              </div>
+              <div class="utility-action-list">
+                <button class="action-button" type="button" id="download-backup-button">Download backup</button>
+                <button class="action-button" type="button" id="import-backup-button">Import backup</button>
+                <button class="action-button danger-button" type="button" id="reset-game-button">Reset game</button>
+              </div>
+            </section>
+
+            <section class="utility-section-card">
+              <div class="utility-card-header">
+                <h2>System Controls</h2>
+              </div>
+              <div class="utility-action-list">
+                <button class="action-button primary-button" type="button" id="restart-system-button">Restart Application</button>
+                <button class="action-button danger-button" type="button" id="reboot-pi-button">Reboot Scoreboard</button>
+                <button class="action-button danger-button" type="button" id="shutdown-pi-button">Shutdown Scoreboard</button>
+              </div>
+            </section>
           </div>
-        </div>
 
-        <div class="section-heading utility-section-heading">
-          <h2>Backups And Reset</h2>
+          <section class="utility-section-card utility-editor-card">
+            <div class="utility-card-header">
+              <h2>Manual Inning Edits</h2>
+            </div>
+            <div class="inning-editor" id="inning-editor"></div>
+          </section>
         </div>
-        <div class="utility-grid">
-          <button class="action-button" type="button" id="download-backup-button">Download backup</button>
-          <button class="action-button" type="button" id="import-backup-button">Import backup</button>
-          <button class="action-button danger-button" type="button" id="reset-game-button">Reset game</button>
-        </div>
-
-        <div class="section-heading utility-section-heading">
-          <h2>System Controls</h2>
-        </div>
-        <div class="utility-grid">
-          <button class="action-button primary-button" type="button" id="restart-system-button">Restart Application</button>
-          <button class="action-button danger-button" type="button" id="reboot-pi-button">Reboot Scoreboard</button>
-          <button class="action-button danger-button" type="button" id="shutdown-pi-button">Shutdown Scoreboard</button>
-        </div>
-
-        <div class="section-heading utility-section-heading">
-          <h2>Manual inning edits</h2>
-        </div>
-        <div class="inning-editor" id="inning-editor"></div>
 
         <input id="backup-file-input" type="file" accept="application/json" hidden>
       </div>

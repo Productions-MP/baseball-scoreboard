@@ -115,7 +115,7 @@ body.display-page *::after {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 1fr) 104px;
   gap: 4px;
 }
 
@@ -291,7 +291,7 @@ body.display-page *::after {
 
 .v2-count-row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   padding: 0 10px;
@@ -306,7 +306,7 @@ body.display-page *::after {
 .v2-count-label {
   justify-self: center;
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: 1.875rem;
   font-weight: 700;
   color: rgba(245, 241, 231, 0.9);
   line-height: 1;
@@ -643,16 +643,29 @@ body.display-page *::after {
 
 .design-picker-card,
 .design-picker-field,
-.design-picker-heading {
+.design-picker-heading,
+.utility-sheet-header-copy,
+.utility-layout,
+.utility-stack,
+.utility-section-card,
+.utility-card-header,
+.utility-action-list,
+.utility-editor-card {
   display: grid;
+  gap: 10px;
+}
+
+.design-picker-card,
+.design-picker-field,
+.design-picker-heading {
   gap: 8px;
 }
 
 .design-picker-card {
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(174, 145, 66, 0.26);
-  background: rgba(0, 0, 0, 0.12);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .design-picker-heading {
@@ -691,6 +704,10 @@ body.display-page *::after {
   text-transform: uppercase;
   color: var(--ink);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
 }
 
 .menu-button {
@@ -757,6 +774,7 @@ body.display-page *::after {
   text-align: left;
   width: 100%;
   min-width: 0;
+  justify-content: flex-start;
 }
 
 .danger-text {
@@ -1075,6 +1093,10 @@ body.display-page *::after {
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
 }
 
 .action-button {
@@ -1098,6 +1120,7 @@ body.display-page *::after {
   background: rgba(255, 255, 255, 0.03);
   padding: 0.9rem 0.75rem;
   font-size: 2.15rem;
+  line-height: 1;
 }
 
 .top-stepper-button {
@@ -1231,9 +1254,10 @@ body.display-page *::after {
 }
 
 .utility-sheet-card {
+  width: min(100%, 960px);
   max-height: min(88vh, 900px);
   max-height: min(88svh, 900px);
-  padding: 20px;
+  padding: 18px;
   overflow: auto;
   display: grid;
   gap: 16px;
@@ -1248,6 +1272,79 @@ body.display-page *::after {
 .utility-sheet-header {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
+}
+
+.utility-sheet-header-copy {
+  gap: 0;
+}
+
+.utility-layout {
+  gap: 12px;
+}
+
+.utility-stack {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  gap: 12px;
+}
+
+.utility-stack > :first-child {
+  grid-column: 1 / -1;
+}
+
+.utility-section-card {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(174, 145, 66, 0.28);
+  background: rgba(0, 0, 0, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.utility-card-header {
+  gap: 0;
+}
+
+.utility-action-list {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+
+.utility-action-list .action-button {
+  width: 100%;
+}
+
+.utility-editor-card {
+  gap: 14px;
+}
+
+.utility-sheet-card .menu-button,
+.utility-sheet-card .action-button,
+.utility-sheet-card .select-input,
+.utility-sheet-card .custom-select-option {
+  min-height: 38px;
+}
+
+.utility-sheet-card .menu-button,
+.utility-sheet-card .action-button {
+  padding: 0.55rem 0.72rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.utility-sheet-card .select-input {
+  min-height: 40px;
+  padding-left: 12px;
+}
+
+.utility-sheet-card .custom-select-option {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.utility-sheet-card h2 {
+  font-size: 0.98rem;
+  letter-spacing: 0.04em;
 }
 
 .inline-note.is-error {
@@ -1267,6 +1364,12 @@ body.display-page *::after {
   }
 }
 
+@media (min-width: 761px) and (max-width: 900px) {
+  .control-stepper-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 760px) {
   .control-toolbar,
   .history-button-row,
@@ -1276,9 +1379,14 @@ body.display-page *::after {
   .control-stepper-grid,
   .stepper-row,
   .utility-grid,
+  .utility-stack,
   .inning-editor,
   .auth-dialog-actions {
     grid-template-columns: 1fr;
+  }
+
+  .utility-stack > :first-child {
+    grid-column: auto;
   }
 
   .control-page-menu {
@@ -1303,6 +1411,10 @@ body.display-page *::after {
 
   .status-note {
     text-align: center;
+  }
+
+  .utility-section-card {
+    padding: 12px;
   }
 }
 
@@ -1384,6 +1496,7 @@ body.display-page *::after {
   .counts-panel,
   .flow-card,
   .design-picker-card,
+  .utility-section-card,
   .auth-dialog-card,
   .utility-sheet-card {
     padding: 10px;
