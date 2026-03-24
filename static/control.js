@@ -20,12 +20,19 @@
   const authSkipButton = document.getElementById("auth-skip-button");
   const controlKeyInput = document.getElementById("control-key-input");
   const saveKeyButton = document.getElementById("save-key-button");
+  const previewFrame = document.getElementById("control-preview-iframe");
+  const designPicker = document.getElementById("scoreboard-design-picker");
+  const designSelect = document.getElementById("scoreboard-design-select");
+  const designTrigger = document.getElementById("scoreboard-design-trigger");
+  const designTriggerText = document.getElementById("scoreboard-design-trigger-text");
+  const designMenu = document.getElementById("scoreboard-design-menu");
+  const designOptions = Array.from(document.querySelectorAll("[data-design-option]"));
+  const designDimensionsNote = document.getElementById("design-dimensions-note");
   const liveInningLabel = document.getElementById("live-inning-label");
   const ballValue = document.getElementById("ball-value");
   const strikeValue = document.getElementById("strike-value");
   const outValue = document.getElementById("out-value");
   const currentRunsValue = document.getElementById("current-runs-value");
-  const outChip = document.getElementById("out-chip");
   const guestBatButton = document.getElementById("guest-bat-button");
   const homeBatButton = document.getElementById("home-bat-button");
   const guestBatArrow = document.getElementById("guest-bat-arrow");
@@ -37,7 +44,7 @@
   const rebootPiButton = document.getElementById("reboot-pi-button");
   const shutdownPiButton = document.getElementById("shutdown-pi-button");
 
-  let state = core.cloneDefaultState();
+  let state = config.initialState ? core.serializeState(config.initialState) : core.cloneDefaultState();
   let saveInFlight = false;
   let pendingRequestId = "";
   let pendingActionType = "";
@@ -46,6 +53,10 @@
   let authDismissed = false;
   let undoStack = [];
   let redoStack = [];
+
+  function formatDesignLabel(design) {
+    return design.label + " (" + design.width + "x" + design.height + ")";
+  }
 
   function setStatusMessage(message, isError) {
     saveNote.textContent = message;
@@ -133,6 +144,47 @@
     menuButton.setAttribute("aria-expanded", "false");
   }
 
+  function openDesignMenu() {
+    if (!designPicker || !designMenu || !designTrigger) {
+      return;
+    }
+
+    designPicker.classList.add("is-open");
+    designMenu.hidden = false;
+    designTrigger.setAttribute("aria-expanded", "true");
+  }
+
+  function closeDesignMenu() {
+    if (!designPicker || !designMenu || !designTrigger) {
+      return;
+    }
+
+    designPicker.classList.remove("is-open");
+    designMenu.hidden = true;
+    designTrigger.setAttribute("aria-expanded", "false");
+  }
+
+  function focusDesignOptionByValue(value) {
+    const match = designOptions.find(function findOption(option) {
+      return option.dataset.value === value;
+    });
+
+    if (match) {
+      match.focus();
+    }
+  }
+
+  function commitDesignSelection(value) {
+    if (!designSelect || !value || designSelect.value === value) {
+      closeDesignMenu();
+      return;
+    }
+
+    designSelect.value = value;
+    designSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    closeDesignMenu();
+  }
+
   function openUtilities() {
     closeMenu();
     toggleOverlay(utilitiesOverlay, true);
@@ -171,12 +223,37 @@
     strikeValue.textContent = String(derived.strike);
     outValue.textContent = String(derived.out);
     currentRunsValue.textContent = String(battingRuns);
-    outChip.textContent = "Outs " + derived.out;
 
     guestBatButton.classList.toggle("is-active", guestBatting);
     homeBatButton.classList.toggle("is-active", !guestBatting);
     guestBatArrow.classList.toggle("is-active", guestBatting);
     homeBatArrow.classList.toggle("is-active", !guestBatting);
+  }
+
+  function syncDesignSelection() {
+    const design = core.withDerived(state).design;
+
+    if (designSelect) {
+      designSelect.value = design.id;
+    }
+
+    if (designTriggerText) {
+      designTriggerText.textContent = formatDesignLabel(design);
+    }
+
+    designOptions.forEach(function syncDesignOption(option) {
+      const isSelected = option.dataset.value === design.id;
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-selected", String(isSelected));
+    });
+
+    if (designDimensionsNote) {
+      designDimensionsNote.textContent = formatDesignLabel(design);
+    }
+
+    if (previewFrame) {
+      previewFrame.style.aspectRatio = design.width + " / " + design.height;
+    }
   }
 
   function buildInningEditor() {
@@ -207,6 +284,7 @@
 
   function render() {
     updateSummary();
+    syncDesignSelection();
     syncEditorInputs();
     updateAuthOverlay();
     updateHistoryButtons();
@@ -470,6 +548,9 @@
           nextState.ball += 1;
         }
         break;
+      case "clear-ball-strikes":
+        clearBallStrikes(nextState);
+        break;
       case "strike-down":
         nextState.strike = Math.max(0, nextState.strike - 1);
         break;
@@ -606,6 +687,10 @@
     if (!menuPopover.hidden && !event.target.closest("#menu-popover") && !event.target.closest("#menu-button")) {
       closeMenu();
     }
+
+    if (designMenu && !designMenu.hidden && !event.target.closest("#scoreboard-design-picker")) {
+      closeDesignMenu();
+    }
   });
 
   inningEditor.addEventListener("change", function onInputChange(event) {
@@ -627,6 +712,71 @@
     }
 
     applyLocalState(nextState);
+  });
+
+  if (designSelect) {
+    designSelect.addEventListener("change", function onDesignChange() {
+      const nextState = snapshotState();
+      nextState.design_id = designSelect.value;
+      applyLocalState(nextState);
+    });
+  }
+
+  if (designTrigger) {
+    designTrigger.addEventListener("click", function onDesignTriggerClick() {
+      if (!designMenu) {
+        return;
+      }
+
+      if (designMenu.hidden) {
+        openDesignMenu();
+        focusDesignOptionByValue(designSelect.value);
+      } else {
+        closeDesignMenu();
+      }
+    });
+
+    designTrigger.addEventListener("keydown", function onDesignTriggerKeydown(event) {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+
+      event.preventDefault();
+      openDesignMenu();
+      focusDesignOptionByValue(designSelect.value);
+    });
+  }
+
+  designOptions.forEach(function bindDesignOption(option, index) {
+    option.addEventListener("click", function onDesignOptionClick() {
+      commitDesignSelection(option.dataset.value);
+    });
+
+    option.addEventListener("keydown", function onDesignOptionKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeDesignMenu();
+        designTrigger.focus();
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitDesignSelection(option.dataset.value);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        designOptions[Math.min(index + 1, designOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        designOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
   });
 
   undoButton.addEventListener("click", function onUndo() {

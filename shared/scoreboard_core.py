@@ -1,6 +1,9 @@
 from copy import deepcopy
 
+from shared.scoreboard_designs import DEFAULT_SCOREBOARD_DESIGN_ID, get_scoreboard_design, normalize_design_id
+
 DEFAULT_STATE = {
+    "design_id": DEFAULT_SCOREBOARD_DESIGN_ID,
     "inning": 1,
     "half": "top",
     "ball": 0,
@@ -40,6 +43,7 @@ def normalize_runs(value):
 def normalize_state(data=None):
     source = data or {}
     return {
+        "design_id": normalize_design_id(source.get("design_id", source.get("scoreboard_design_id"))),
         "inning": clamp(to_int(source.get("inning"), 1), 1, 10),
         "half": "bottom" if source.get("half") == "bottom" else "top",
         "ball": clamp(to_int(source.get("ball", source.get("balls")), 0), 0, 3),
@@ -66,6 +70,7 @@ def with_derived(state, default_source="scoreboard"):
     normalized = normalize_state(state)
     return {
         **normalized,
+        "design": get_scoreboard_design(normalized["design_id"]),
         "guest_total": sum(normalized["guest_runs"]),
         "home_total": sum(normalized["home_runs"]),
         "updated_at": state.get("updated_at") if isinstance(state, dict) else None,

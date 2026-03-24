@@ -1,0 +1,78 @@
+<main class="scoreboard-display scoreboard-display-baseball-v1" data-design-id="baseball-v1">
+  <section class="linescore-panel">
+    <div class="linescore-grid">
+      <div class="active-inning-highlight" id="active-inning-highlight" aria-hidden="true"></div>
+      <div class="cell label-cell status-cell">
+        <span class="heartbeat-led" id="heartbeat-led" aria-label="Websocket connection status"></span>
+      </div>
+      <div class="cell inning-head" id="inning-head-0">1</div>
+      <div class="cell inning-head" id="inning-head-1">2</div>
+      <div class="cell inning-head" id="inning-head-2">3</div>
+      <div class="cell inning-head" id="inning-head-3">4</div>
+      <div class="cell inning-head" id="inning-head-4">5</div>
+      <div class="cell inning-head" id="inning-head-5">6</div>
+      <div class="cell inning-head" id="inning-head-6">7</div>
+      <div class="cell inning-head" id="inning-head-7">8</div>
+      <div class="cell inning-head" id="inning-head-8">9</div>
+      <div class="cell inning-head overtime-cell" id="inning-head-9">10</div>
+      <div class="cell inning-head total-head">R</div>
+
+      <div class="cell label-cell team-cell">
+        <span class="team-label">GUEST</span>
+        <span class="team-arrow team-arrow-up" id="guest-arrow" aria-hidden="true"></span>
+      </div>
+      <div class="cell score-cell" id="guest-run-0">0</div>
+      <div class="cell score-cell" id="guest-run-1">0</div>
+      <div class="cell score-cell" id="guest-run-2">0</div>
+      <div class="cell score-cell" id="guest-run-3">0</div>
+      <div class="cell score-cell" id="guest-run-4">0</div>
+      <div class="cell score-cell" id="guest-run-5">0</div>
+      <div class="cell score-cell" id="guest-run-6">0</div>
+      <div class="cell score-cell" id="guest-run-7">0</div>
+      <div class="cell score-cell" id="guest-run-8">0</div>
+      <div class="cell score-cell overtime-cell" id="guest-run-9">0</div>
+      <div class="cell score-cell total-cell" id="guest-total">0</div>
+
+      <div class="cell label-cell team-cell">
+        <span class="team-label">HOME</span>
+        <span class="team-arrow team-arrow-down" id="home-arrow" aria-hidden="true"></span>
+      </div>
+      <div class="cell score-cell" id="home-run-0">0</div>
+      <div class="cell score-cell" id="home-run-1">0</div>
+      <div class="cell score-cell" id="home-run-2">0</div>
+      <div class="cell score-cell" id="home-run-3">0</div>
+      <div class="cell score-cell" id="home-run-4">0</div>
+      <div class="cell score-cell" id="home-run-5">0</div>
+      <div class="cell score-cell" id="home-run-6">0</div>
+      <div class="cell score-cell" id="home-run-7">0</div>
+      <div class="cell score-cell" id="home-run-8">0</div>
+      <div class="cell score-cell overtime-cell" id="home-run-9">0</div>
+      <div class="cell score-cell total-cell" id="home-total">0</div>
+
+      <div class="status-strip">
+        <div class="count-panel ball-card">
+          <span class="count-label">BALL</span>
+          <span class="count-value" id="count-ball">0</span>
+        </div>
+        <div class="count-panel strikes-card">
+          <span class="count-label">STRIKE</span>
+          <span class="count-value" id="count-strike">0</span>
+        </div>
+        <div class="count-panel outs-card">
+          <span class="count-label">OUT</span>
+          <span class="count-value" id="count-out">0</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="info-panel">
+    <div class="logo-block">
+      <img
+        class="logo-image"
+        src="{{ url_for('public_asset', filename='logo.png') }}"
+        alt="{{ school_name }} baseball logo"
+      >
+    </div>
+  </aside>
+</main>

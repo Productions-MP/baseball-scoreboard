@@ -223,6 +223,7 @@ After boot:
 - Unit: `scoreboard-local.service`
 - Runs from the repo root
 - Restarts automatically on failure
+- The web controller's restart/reboot/shutdown buttons rely on a sudoers rule installed by `scripts/install.sh`
 
 Useful commands:
 
