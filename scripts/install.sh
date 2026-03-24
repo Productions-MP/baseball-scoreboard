@@ -13,6 +13,7 @@ LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-local.service"
 DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-display.service"
 STREAMDECK_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-streamdeck.service"
 PAM_TARGET="/etc/pam.d/scoreboard-display"
+SUDOERS_TARGET="/etc/sudoers.d/scoreboard-local-system-actions"
 ENV_FILE="${APP_ROOT}/.env"
 LEGACY_ENV_FILE="${LEGACY_ROOT}/pi.env"
 APP_USER="${SUDO_USER:-$USER}"
@@ -195,6 +196,18 @@ render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-display.ser
 render_template "${STREAMDECK_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-streamdeck.service"
 render_template "${PAM_TEMPLATE}" "${TMP_DIR}/scoreboard-display.pam"
 
+SYSTEMCTL_BIN="$(command -v systemctl)"
+SHUTDOWN_BIN="$(command -v shutdown)"
+SUDOERS_TEMP="${TMP_DIR}/scoreboard-local-system-actions.sudoers"
+cat > "${SUDOERS_TEMP}" <<EOF
+${APP_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_BIN} restart scoreboard-local.service scoreboard-display.service
+${APP_USER} ALL=(root) NOPASSWD: ${SHUTDOWN_BIN} -r now
+${APP_USER} ALL=(root) NOPASSWD: ${SHUTDOWN_BIN} now
+EOF
+if command -v visudo >/dev/null 2>&1; then
+  sudo visudo -cf "${SUDOERS_TEMP}"
+fi
+
 sudo systemctl disable --now scoreboard-fallback.service >/dev/null 2>&1 || true
 sudo rm -f "${SYSTEMD_DIR}/scoreboard-fallback.service"
 sudo systemctl disable --now scoreboard-display.service >/dev/null 2>&1 || true
@@ -203,6 +216,7 @@ sudo install -m 0644 "${TMP_DIR}/scoreboard-local.service" "${LOCAL_SERVICE_TARG
 sudo install -m 0644 "${TMP_DIR}/scoreboard-display.service" "${DISPLAY_SERVICE_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-streamdeck.service" "${STREAMDECK_SERVICE_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-display.pam" "${PAM_TARGET}"
+sudo install -m 0440 "${SUDOERS_TEMP}" "${SUDOERS_TARGET}"
 sudo systemctl daemon-reload
 sudo systemctl enable --now scoreboard-local.service
 sudo systemctl enable --now scoreboard-display.service

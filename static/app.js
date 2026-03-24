@@ -1,5 +1,22 @@
 (function bootstrapScoreboardCore() {
-  const DEFAULT_STATE = {
+  const FALLBACK_SCOREBOARD_DESIGNS = [
+    {
+      id: "baseball-v1",
+      label: "Baseball v1",
+      width: 768,
+      height: 192,
+      template: "display_partials/baseball_v1.html",
+    },
+    {
+      id: "baseball-v2",
+      label: "Baseball v2",
+      width: 768,
+      height: 192,
+      template: "display_partials/baseball_v2.html",
+    },
+  ];
+
+  const BASE_STATE = {
     inning: 1,
     half: "top",
     ball: 0,
@@ -10,7 +27,10 @@
   };
 
   function cloneDefaultState() {
-    return JSON.parse(JSON.stringify(DEFAULT_STATE));
+    return serializeState({
+      ...JSON.parse(JSON.stringify(BASE_STATE)),
+      design_id: getDefaultDesignId(),
+    });
   }
 
   function toInt(value, fallback) {
@@ -20,6 +40,65 @@
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
+  }
+
+  function normalizeDesign(design, fallback) {
+    const baseDesign = fallback || FALLBACK_SCOREBOARD_DESIGNS[0];
+    const source = design || {};
+    const id = String(source.id || baseDesign.id).trim() || baseDesign.id;
+    const label = String(source.label || baseDesign.label).trim() || baseDesign.label;
+    const width = Math.max(1, toInt(source.width, baseDesign.width));
+    const height = Math.max(1, toInt(source.height, baseDesign.height));
+
+    return {
+      ...baseDesign,
+      ...source,
+      id: id,
+      label: label,
+      width: width,
+      height: height,
+    };
+  }
+
+  function getScoreboardDesigns() {
+    const config = getConfig();
+    const configuredDesigns =
+      Array.isArray(config.designs) && config.designs.length > 0 ? config.designs : FALLBACK_SCOREBOARD_DESIGNS;
+
+    return configuredDesigns.map(function mapDesign(design, index) {
+      const fallback = FALLBACK_SCOREBOARD_DESIGNS[index] || FALLBACK_SCOREBOARD_DESIGNS[0];
+      return normalizeDesign(design, fallback);
+    });
+  }
+
+  function normalizeDesignId(value) {
+    const candidate = String(value || "").trim();
+    const designs = getScoreboardDesigns();
+    const match = designs.find(function findDesign(design) {
+      return design.id === candidate;
+    });
+
+    return match ? match.id : designs[0].id;
+  }
+
+  function getDefaultDesignId() {
+    const config = getConfig();
+    return normalizeDesignId(config.defaultDesignId || (config.activeDesign && config.activeDesign.id));
+  }
+
+  function getDesignById(value) {
+    const designs = getScoreboardDesigns();
+    const designId = normalizeDesignId(value);
+    const match = designs.find(function findDesign(design) {
+      return design.id === designId;
+    });
+
+    return match || designs[0];
+  }
+
+  function getActiveDesign() {
+    const config = getConfig();
+    return getDesignById((config.activeDesign && config.activeDesign.id) || (config.initialState && config.initialState.design_id));
   }
 
   function normalizeRuns(value) {
@@ -33,6 +112,7 @@
     const source = input || {};
 
     return {
+      design_id: normalizeDesignId(source.design_id ?? source.scoreboard_design_id),
       inning: clamp(toInt(source.inning, 1), 1, 10),
       half: source.half === "bottom" ? "bottom" : "top",
       ball: clamp(toInt(source.ball ?? source.balls, 0), 0, 3),
@@ -58,6 +138,7 @@
 
     return {
       ...normalized,
+      design: getDesignById(normalized.design_id),
       guest_total: sumRuns(normalized.guest_runs),
       home_total: sumRuns(normalized.home_runs),
       updated_at: state && state.updated_at ? state.updated_at : null,
@@ -326,9 +407,12 @@
     cloneDefaultState: cloneDefaultState,
     createRealtimeChannel: createRealtimeChannel,
     fetchState: fetchState,
+    getActiveDesign: getActiveDesign,
     formatTimestamp: formatTimestamp,
     getConfig: getConfig,
     getControlKey: getControlKey,
+    getDesignById: getDesignById,
+    getScoreboardDesigns: getScoreboardDesigns,
     resetState: resetState,
     runSystemAction: runSystemAction,
     serializeState: serializeState,

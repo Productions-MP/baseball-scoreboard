@@ -11,6 +11,7 @@ from flask import Flask, jsonify, redirect, render_template, request, send_from_
 from flask_sock import Sock
 from simple_websocket import ConnectionClosed
 from shared.scoreboard_core import apply_action, clone_default_state, merge_state, normalize_state, with_derived
+from shared.scoreboard_designs import DEFAULT_SCOREBOARD_DESIGN_ID, get_scoreboard_design, list_scoreboard_designs
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILES = (
@@ -261,7 +262,7 @@ def parse_system_action(value):
     return action_name
 
 
-def run_system_command_async(action_name):
+def resolve_system_command(action_name):
     if os.name != "posix":
         raise RuntimeError("System actions are only supported on the Raspberry Pi host.")
 
@@ -273,6 +274,35 @@ def run_system_command_async(action_name):
         raise RuntimeError(f"{base_command[0]} is not available on this host.")
 
     command = [executable, *base_command[1:]]
+
+    geteuid = getattr(os, "geteuid", None)
+
+    if callable(geteuid) and geteuid() == 0:
+        return command
+
+    sudo = shutil.which("sudo")
+
+    if not sudo:
+        raise RuntimeError("sudo is not available for web system actions on this host.")
+
+    permission_check = subprocess.run(
+        [sudo, "-n", "-l", *command],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+    if permission_check.returncode != 0:
+        raise RuntimeError(
+            "The web controller is not allowed to run system actions. Re-run scripts/install.sh on the Pi to refresh the sudoers rule."
+        )
+
+    return [sudo, "-n", *command]
+
+
+def run_system_command_async(action_name):
+    command = resolve_system_command(action_name)
+    action = SYSTEM_ACTIONS[action_name]
 
     def launch():
         try:
@@ -351,15 +381,29 @@ def root():
 
 @app.get("/display")
 def display():
-    return render_template("display.html", school_name=SCHOOL_NAME)
+    current_state = read_state()
+    active_design = get_scoreboard_design(current_state.get("design_id"))
+    return render_template(
+        "display.html",
+        school_name=SCHOOL_NAME,
+        scoreboard_designs=list_scoreboard_designs(),
+        default_design_id=DEFAULT_SCOREBOARD_DESIGN_ID,
+        active_design=active_design,
+        display_template=active_design["template"],
+        initial_state=with_derived(current_state, default_source=MODE_NAME),
+    )
 
 
 @app.get("/control")
 def control():
+    current_state = read_state()
     return render_template(
         "control.html",
         school_name=SCHOOL_NAME,
         require_key=bool(read_control_key()),
+        scoreboard_designs=list_scoreboard_designs(),
+        default_design_id=DEFAULT_SCOREBOARD_DESIGN_ID,
+        initial_state=with_derived(current_state, default_source=MODE_NAME),
     )
 
 
