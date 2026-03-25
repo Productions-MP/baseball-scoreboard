@@ -182,14 +182,14 @@ body.display-page *::after {
 .v2-total-head {
   font-family: var(--font-display);
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 400;
   color: var(--gold);
 }
 
 .v2-score-cell {
   font-family: var(--font-display);
   font-size: 2.5rem;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.03em;
   color: var(--white);
 }
@@ -223,7 +223,7 @@ body.display-page *::after {
   transform: none;
   font-family: var(--font-display);
   font-size: 1.32rem;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.1em;
   color: inherit;
   white-space: nowrap;
@@ -307,7 +307,7 @@ body.display-page *::after {
   justify-self: center;
   font-family: var(--font-display);
   font-size: 1.875rem;
-  font-weight: 700;
+  font-weight: 400;
   color: rgba(245, 241, 231, 0.9);
   line-height: 1;
   text-align: center;
@@ -317,7 +317,7 @@ body.display-page *::after {
   justify-self: end;
   font-family: var(--font-display);
   font-size: 3.35rem;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
   color: var(--white);
 }
@@ -355,7 +355,7 @@ body.display-page *::after {
 
 .label-cell {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.08em;
 }
 
@@ -385,14 +385,14 @@ body.display-page *::after {
 .total-head {
   font-family: var(--font-display);
   font-size: 0.84rem;
-  font-weight: 700;
+  font-weight: 400;
   color: var(--gold);
 }
 
 .score-cell {
   font-family: var(--font-display);
   font-size: 1.7rem;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.03em;
 }
 
@@ -468,7 +468,7 @@ body.display-page *::after {
 .count-label {
   font-family: var(--font-display);
   font-size: 1.28rem;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.02em;
   line-height: 1;
   color: rgba(245, 241, 231, 0.9);
@@ -477,7 +477,7 @@ body.display-page *::after {
 .count-value {
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
   color: var(--white);
 }
