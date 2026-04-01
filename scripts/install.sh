@@ -8,6 +8,7 @@ LOCAL_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-local.service"
 DISPLAY_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-display.service"
 STREAMDECK_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-streamdeck.service"
 PAM_TEMPLATE="${APP_ROOT}/services/scoreboard-display.pam"
+WIFI_SWITCH_SCRIPT="${APP_ROOT}/scripts/switch-wifi-to-usb.sh"
 SYSTEMD_DIR="/etc/systemd/system"
 LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-local.service"
 DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-display.service"
@@ -174,6 +175,8 @@ ordered_keys = [
     "SCOREBOARD_STREAMDECK_BRIGHTNESS",
     "SCOREBOARD_STREAMDECK_POLL_SECONDS",
     "SCOREBOARD_STREAMDECK_CONFIRM_SECONDS",
+    "SCOREBOARD_WIFI_SSID",
+    "SCOREBOARD_WIFI_PSK",
 ]
 
 new_lines = []
@@ -231,6 +234,12 @@ cleanup_desktop_autostart "${LXDE_AUTOSTART_FILE}"
 cleanup_desktop_autostart "${LABWC_AUTOSTART_FILE}"
 
 rm -f "${APP_HOME}/Desktop/Scoreboard Display.desktop" "${APP_HOME}/Desktop/Scoreboard Control.desktop"
+
+if [ -x "${WIFI_SWITCH_SCRIPT}" ]; then
+  if ! "${WIFI_SWITCH_SCRIPT}"; then
+    echo "Warning: USB Wi-Fi switchover did not complete. wlan0 remains available as the fallback interface." >&2
+  fi
+fi
 
 BOOT_CONFIG_NOTE=""
 

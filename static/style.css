@@ -33,6 +33,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Scoreboard Futura";
+  src: url("/public/fonts/Futura%20Std%20Heavy.otf") format("opentype");
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -182,16 +190,21 @@ body.display-page *::after {
 .v2-total-head {
   font-family: var(--font-display);
   font-size: 1rem;
-  font-weight: 400;
+  font-weight: 800;
   color: var(--gold);
+}
+
+.v2-inning-head {
+  text-indent: 0.04em;
 }
 
 .v2-score-cell {
   font-family: var(--font-display);
-  font-size: 2.5rem;
-  font-weight: 400;
+  font-size: 3.75rem;
+  font-weight: 800;
   letter-spacing: 0.03em;
   color: var(--white);
+  text-indent: 0.04em;
 }
 
 .v2-total-head,
@@ -200,8 +213,14 @@ body.display-page *::after {
 }
 
 .v2-total-cell {
-  font-size: 3.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4.31rem;
   color: var(--white);
+  letter-spacing: 0;
+  padding: 0 2px 2px 0;
+  text-indent: 0;
 }
 
 .v2-team-cell {
@@ -223,7 +242,7 @@ body.display-page *::after {
   transform: none;
   font-family: var(--font-display);
   font-size: 1.32rem;
-  font-weight: 400;
+  font-weight: 800;
   letter-spacing: 0.1em;
   color: inherit;
   white-space: nowrap;
@@ -307,7 +326,7 @@ body.display-page *::after {
   justify-self: center;
   font-family: var(--font-display);
   font-size: 1.875rem;
-  font-weight: 400;
+  font-weight: 800;
   color: rgba(245, 241, 231, 0.9);
   line-height: 1;
   text-align: center;
@@ -316,8 +335,8 @@ body.display-page *::after {
 .v2-count-value {
   justify-self: end;
   font-family: var(--font-display);
-  font-size: 3.35rem;
-  font-weight: 400;
+  font-size: 3.75rem;
+  font-weight: 800;
   line-height: 1;
   color: var(--white);
 }
@@ -355,7 +374,7 @@ body.display-page *::after {
 
 .label-cell {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
   letter-spacing: 0.08em;
 }
 
@@ -385,15 +404,21 @@ body.display-page *::after {
 .total-head {
   font-family: var(--font-display);
   font-size: 0.84rem;
-  font-weight: 400;
+  font-weight: 800;
   color: var(--gold);
+}
+
+.inning-head {
+  text-indent: 0.04em;
 }
 
 .score-cell {
   font-family: var(--font-display);
-  font-size: 1.7rem;
-  font-weight: 400;
+  font-size: 2.52rem;
+  font-weight: 800;
   letter-spacing: 0.03em;
+  padding-bottom: 4px;
+  text-indent: 0;
 }
 
 .overtime-cell {
@@ -414,8 +439,11 @@ body.display-page *::after {
 }
 
 .total-cell {
+  font-size: 2.9rem;
   color: var(--white);
   background: rgba(255, 255, 255, 0.08);
+  padding-bottom: 4px;
+  text-indent: 0;
 }
 
 .status-strip {
@@ -468,7 +496,7 @@ body.display-page *::after {
 .count-label {
   font-family: var(--font-display);
   font-size: 1.28rem;
-  font-weight: 400;
+  font-weight: 800;
   letter-spacing: 0.02em;
   line-height: 1;
   color: rgba(245, 241, 231, 0.9);
@@ -476,15 +504,16 @@ body.display-page *::after {
 
 .count-value {
   font-family: var(--font-display);
-  font-size: 2rem;
-  font-weight: 400;
+  font-size: 2.52rem;
+  font-weight: 800;
   line-height: 1;
   color: var(--white);
 }
 
 .heartbeat-led {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
+  transform: translateY(1px);
   border-radius: 999px;
   background: rgba(200, 79, 63, 0.92);
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);

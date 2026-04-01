@@ -45,6 +45,7 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 |   |-- open-local.sh
 |   |-- run-cage-browser.sh
 |   |-- streamdeck_daemon.py
+|   |-- switch-wifi-to-usb.sh
 |   `-- start-kiosk-session.sh
 |-- services/
 |   |-- scoreboard-display.pam
@@ -149,6 +150,15 @@ cd ~/baseball-scoreboard
 cp .env.example .env
 ```
 
+If you want the installer to move the active Wi-Fi connection from the built-in Pi radio (`wlan0`) to the Realtek USB adapter (`wlan1`), fill in these optional values before running `install.sh`:
+
+```text
+SCOREBOARD_WIFI_SSID=<your-ssid>
+SCOREBOARD_WIFI_PSK=<your-password>
+```
+
+If those values are left blank and NetworkManager already has a saved profile for the current network, the installer will still try to reuse that profile on `wlan1`. The explicit SSID/PSK path is the most reliable option because it also lets the installer persist a dedicated `wlan1` profile.
+
 ### 2. Apply the Pi display boot settings
 
 On Raspberry Pi 4 with the VC4 KMS driver, HDMI output selection is handled by Linux/KMS rather than by Cage or Chromium. For this kiosk, the safest practical default is to force the first DRM HDMI connector, which maps to the Pi 4 primary HDMI output.
@@ -192,6 +202,7 @@ The installer will:
 - install StreamDeck build/runtime dependencies
 - install bundled fonts from `public/fonts`
 - normalize `.env`
+- detect a Realtek `0bda:c811` USB adapter on `wlan1`, attempt to move the active Wi-Fi link there, and fall back to `wlan0` if the handoff fails
 - install `scoreboard-local.service`
 - install `scoreboard-display.service`
 - install `scoreboard-streamdeck.service`
@@ -296,8 +307,21 @@ Supported local variables:
 - `SCOREBOARD_STREAMDECK_BRIGHTNESS`
 - `SCOREBOARD_STREAMDECK_POLL_SECONDS`
 - `SCOREBOARD_STREAMDECK_CONFIRM_SECONDS`
+- `SCOREBOARD_WIFI_SSID`
+- `SCOREBOARD_WIFI_PSK`
 
 Legacy `FALLBACK_*` environment names are still accepted by the Python app so old Pi installs do not break immediately, but the `SCOREBOARD_*` names above are the primary interface.
+
+## Wi-Fi switchover
+
+On install, `scripts/switch-wifi-to-usb.sh` now tries to move the active wireless connection from `wlan0` to `wlan1` when it detects the Realtek USB adapter (`0bda:c811`).
+
+- Detection checks `wlan1`, `lsusb`, and the `wlan1` driver path for a USB-backed adapter.
+- The installer brings `wlan1` up before attempting a handoff.
+- If NetworkManager is active, it prefers `nmcli` and lowers the route metric on `wlan1`.
+- If NetworkManager is not active, it can build `/etc/wpa_supplicant/wpa_supplicant-wlan1.conf` from `SCOREBOARD_WIFI_SSID` and `SCOREBOARD_WIFI_PSK`.
+- When the switchover succeeds, the installer writes a managed metric block into `/etc/dhcpcd.conf` so `wlan1` stays preferred across reboots.
+- If the USB adapter is missing or the handoff fails, the installer brings `wlan0` back up and continues the scoreboard install.
 
 ## Chromium launch behavior
 
@@ -430,6 +454,25 @@ Then verify:
 - `sudo systemctl status scoreboard-streamdeck.service`
 - `python3 -m pip show streamdeck`
 - the `.env` control key matches the one expected by the Flask app if you use `SCOREBOARD_CONTROL_KEY`
+
+### USB Wi-Fi does not take over
+
+Check adapter detection and route preference:
+
+```bash
+lsusb | grep 0bda:c811
+ip link show wlan1
+readlink /sys/class/net/wlan1/device/driver
+ip route
+```
+
+If the Realtek adapter is present but never associates, confirm the driver is loaded:
+
+```bash
+lsmod | grep 8821cu
+```
+
+If the Pi is using `wpa_supplicant` instead of NetworkManager, make sure `.env` includes `SCOREBOARD_WIFI_SSID` and `SCOREBOARD_WIFI_PSK` before you rerun `scripts/install.sh`.
 
 ### Cursor is still visible
 
