@@ -12,6 +12,8 @@ FALLBACK_METRIC="${SCOREBOARD_WIFI_FALLBACK_METRIC:-350}"
 USB_DRIVER_PATTERN="${SCOREBOARD_WIFI_USB_DRIVER_PATTERN:-8821cu|8821c|rtl8821cu}"
 WIFI_COUNTRY="${SCOREBOARD_WIFI_COUNTRY:-US}"
 DISABLE_FALLBACK_ON_SUCCESS="${SCOREBOARD_WIFI_DISABLE_WLAN0:-1}"
+NM_CONFIG_DIR="/etc/NetworkManager/conf.d"
+NM_MANAGED_CONFIG="${NM_CONFIG_DIR}/90-scoreboard-wifi-managed.conf"
 SCOREBOARD_WIFI_SSID="${SCOREBOARD_WIFI_SSID:-}"
 SCOREBOARD_WIFI_PSK="${SCOREBOARD_WIFI_PSK:-}"
 
@@ -118,6 +120,61 @@ networkmanager_available() {
   command -v nmcli >/dev/null 2>&1 && nmcli general status >/dev/null 2>&1
 }
 
+write_networkmanager_device_policy() {
+  tmp_file="$(mktemp)"
+  cat > "${tmp_file}" <<EOF
+[device-scoreboard-${USB_IFACE}]
+match-device=interface-name:${USB_IFACE}
+managed=1
+
+[device-scoreboard-${FALLBACK_IFACE}]
+match-device=interface-name:${FALLBACK_IFACE}
+managed=1
+EOF
+  sudo install -d -m 0755 "${NM_CONFIG_DIR}"
+  sudo install -m 0644 "${tmp_file}" "${NM_MANAGED_CONFIG}"
+  rm -f "${tmp_file}"
+}
+
+reload_networkmanager() {
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl reload NetworkManager >/dev/null 2>&1 || true
+  fi
+  sudo nmcli general reload >/dev/null 2>&1 || true
+}
+
+nm_device_state() {
+  sudo nmcli -t -f DEVICE,STATE device status | awk -F: -v dev="$1" '$1==dev {print $2; exit}'
+}
+
+wait_for_nm_device_ready() {
+  iface="$1"
+  attempts="${2:-15}"
+
+  while [ "${attempts}" -gt 0 ]; do
+    state="$(nm_device_state "${iface}")"
+
+    case "${state}" in
+      disconnected|connecting*|connected*)
+        return 0
+        ;;
+      unavailable|unmanaged)
+        sudo nmcli device set "${iface}" managed yes >/dev/null 2>&1 || true
+        bring_iface_up "${iface}" || true
+        if command -v rfkill >/dev/null 2>&1; then
+          sudo rfkill unblock wifi >/dev/null 2>&1 || true
+        fi
+        ;;
+    esac
+
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+
+  warn "NetworkManager still reports ${iface} as '${state:-unknown}'."
+  return 1
+}
+
 write_dhcpcd_metrics() {
   if [ ! -f /etc/dhcpcd.conf ]; then
     return
@@ -174,41 +231,59 @@ PY
   rm -f "${tmp_file}"
 }
 
-connect_with_networkmanager() {
-  reused_existing_profile="0"
-  usb_connection_name="scoreboard-${USB_IFACE}"
-  active_fallback_conn="$(sudo nmcli -t -f NAME,DEVICE connection show --active | awk -F: -v dev="${FALLBACK_IFACE}" '$2==dev {print $1; exit}')"
+ensure_nm_wifi_profile() {
+  profile_name="$1"
+  iface="$2"
+  metric="$3"
+  priority="$4"
 
+  if sudo nmcli -t -f NAME connection show | grep -Fxq "${profile_name}"; then
+    sudo nmcli connection modify "${profile_name}" \
+      connection.interface-name "${iface}" \
+      802-11-wireless.ssid "${SCOREBOARD_WIFI_SSID}" >/dev/null
+  else
+    sudo nmcli connection add type wifi ifname "${iface}" con-name "${profile_name}" ssid "${SCOREBOARD_WIFI_SSID}" >/dev/null
+  fi
+
+  sudo nmcli connection modify "${profile_name}" \
+    connection.interface-name "${iface}" \
+    connection.autoconnect yes \
+    connection.autoconnect-priority "${priority}" \
+    802-11-wireless.mode infrastructure \
+    802-11-wireless-security.key-mgmt wpa-psk \
+    802-11-wireless-security.psk "${SCOREBOARD_WIFI_PSK}" \
+    ipv4.route-metric "${metric}" \
+    ipv6.route-metric "${metric}" >/dev/null
+}
+
+configure_networkmanager_profiles() {
+  usb_connection_name="scoreboard-${USB_IFACE}"
+  fallback_connection_name="scoreboard-${FALLBACK_IFACE}"
+
+  if [ -z "${SCOREBOARD_WIFI_SSID}" ] || [ -z "${SCOREBOARD_WIFI_PSK}" ]; then
+    warn "Persistent NetworkManager setup requires SCOREBOARD_WIFI_SSID and SCOREBOARD_WIFI_PSK in ${ENV_FILE}."
+    return 1
+  fi
+
+  write_networkmanager_device_policy
+  reload_networkmanager
   sudo nmcli radio wifi on >/dev/null 2>&1 || true
   sudo nmcli device set "${USB_IFACE}" managed yes >/dev/null 2>&1 || true
+  if have_iface "${FALLBACK_IFACE}"; then
+    sudo nmcli device set "${FALLBACK_IFACE}" managed yes >/dev/null 2>&1 || true
+  fi
   bring_iface_up "${USB_IFACE}"
+  if have_iface "${FALLBACK_IFACE}"; then
+    bring_iface_up "${FALLBACK_IFACE}" || true
+  fi
+  wait_for_nm_device_ready "${USB_IFACE}"
+  if have_iface "${FALLBACK_IFACE}"; then
+    wait_for_nm_device_ready "${FALLBACK_IFACE}" 5 || true
+  fi
 
-  if [ -n "${SCOREBOARD_WIFI_SSID}" ] && [ -n "${SCOREBOARD_WIFI_PSK}" ]; then
-    if sudo nmcli -t -f NAME connection show | grep -Fxq "${usb_connection_name}"; then
-      sudo nmcli connection delete "${usb_connection_name}" >/dev/null
-    fi
-
-    sudo nmcli connection add type wifi ifname "${USB_IFACE}" con-name "${usb_connection_name}" ssid "${SCOREBOARD_WIFI_SSID}" >/dev/null
-    sudo nmcli connection modify "${usb_connection_name}" connection.interface-name "${USB_IFACE}" >/dev/null
-    sudo nmcli connection modify "${usb_connection_name}" 802-11-wireless.mode infrastructure >/dev/null
-    sudo nmcli connection modify "${usb_connection_name}" wifi-sec.key-mgmt wpa-psk >/dev/null
-    sudo nmcli connection modify "${usb_connection_name}" wifi-sec.psk "${SCOREBOARD_WIFI_PSK}" >/dev/null
-    sudo nmcli connection modify "${usb_connection_name}" \
-      connection.autoconnect yes \
-      connection.autoconnect-priority 100 \
-      ipv4.route-metric "${USB_METRIC}" \
-      ipv6.route-metric "${USB_METRIC}" >/dev/null
-
-    sudo nmcli connection up id "${usb_connection_name}" ifname "${USB_IFACE}" >/dev/null
-  else
-    reused_existing_profile="1"
-    if [ -n "${active_fallback_conn}" ]; then
-      sudo nmcli connection up id "${active_fallback_conn}" ifname "${USB_IFACE}" >/dev/null || sudo nmcli device connect "${USB_IFACE}" >/dev/null
-    else
-      sudo nmcli device connect "${USB_IFACE}" >/dev/null
-    fi
-
-    usb_connection_name="$(sudo nmcli -t -f GENERAL.CONNECTION device show "${USB_IFACE}" | awk -F: '/GENERAL\.CONNECTION/ {print $2; exit}')"
+  ensure_nm_wifi_profile "${usb_connection_name}" "${USB_IFACE}" "${USB_METRIC}" 100
+  if have_iface "${FALLBACK_IFACE}"; then
+    ensure_nm_wifi_profile "${fallback_connection_name}" "${FALLBACK_IFACE}" "${FALLBACK_METRIC}" 10
   fi
 
   sudo nmcli device modify "${USB_IFACE}" ipv4.route-metric "${USB_METRIC}" ipv6.route-metric "${USB_METRIC}" >/dev/null 2>&1 || true
@@ -216,15 +291,23 @@ connect_with_networkmanager() {
     sudo nmcli device modify "${FALLBACK_IFACE}" ipv4.route-metric "${FALLBACK_METRIC}" ipv6.route-metric "${FALLBACK_METRIC}" >/dev/null 2>&1 || true
   fi
 
-  if [ -n "${usb_connection_name}" ] && [ "${usb_connection_name}" != "--" ]; then
-    sudo nmcli connection modify "${usb_connection_name}" connection.autoconnect yes connection.autoconnect-priority 100 connection.interface-name "${USB_IFACE}" ipv4.route-metric "${USB_METRIC}" ipv6.route-metric "${USB_METRIC}" >/dev/null 2>&1 || true
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl disable --now "wpa_supplicant@${USB_IFACE}.service" >/dev/null 2>&1 || true
   fi
+  sudo rm -f "/etc/wpa_supplicant/wpa_supplicant-${USB_IFACE}.conf"
 
-  if [ -n "${active_fallback_conn}" ] && [ "${active_fallback_conn}" != "${usb_connection_name}" ]; then
-    sudo nmcli connection modify "${active_fallback_conn}" connection.autoconnect yes connection.autoconnect-priority 10 ipv4.route-metric "${FALLBACK_METRIC}" ipv6.route-metric "${FALLBACK_METRIC}" >/dev/null 2>&1 || true
-  fi
-
+  sudo nmcli connection up id "${usb_connection_name}" ifname "${USB_IFACE}" >/dev/null
   wait_for_default_route "${USB_IFACE}"
+
+  if [ "${DISABLE_FALLBACK_ON_SUCCESS}" = "1" ] && have_iface "${FALLBACK_IFACE}"; then
+    sudo nmcli device disconnect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
+  fi
+
+  log "NetworkManager profiles installed: ${usb_connection_name} preferred over ${fallback_connection_name}."
+}
+
+connect_with_networkmanager() {
+  configure_networkmanager_profiles
 }
 
 connect_with_wpa_supplicant() {
@@ -317,7 +400,6 @@ log "Attempting Wi-Fi switchover from ${FALLBACK_IFACE} to ${USB_IFACE}."
 
 if networkmanager_available; then
   if connect_with_networkmanager; then
-    write_dhcpcd_metrics
     disable_fallback_iface
     log "Default route now prefers ${USB_IFACE}:"
     ip route show default

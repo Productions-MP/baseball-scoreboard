@@ -314,14 +314,14 @@ Legacy `FALLBACK_*` environment names are still accepted by the Python app so ol
 
 ## Wi-Fi switchover
 
-On install, `scripts/switch-wifi-to-usb.sh` now tries to move the active wireless connection from `wlan0` to `wlan1` when it detects the Realtek USB adapter (`0bda:c811`).
+On install, `scripts/switch-wifi-to-usb.sh` now configures persistent `NetworkManager` profiles so `wlan1` is the preferred Wi-Fi interface and `wlan0` remains the fallback when the USB adapter is missing or unavailable.
 
 - Detection checks `wlan1`, `lsusb`, and the `wlan1` driver path for a USB-backed adapter.
-- The installer brings `wlan1` up before attempting a handoff.
-- If NetworkManager is active, it prefers `nmcli` and lowers the route metric on `wlan1`.
-- If NetworkManager is not active, it can build `/etc/wpa_supplicant/wpa_supplicant-wlan1.conf` from `SCOREBOARD_WIFI_SSID` and `SCOREBOARD_WIFI_PSK`.
-- When the switchover succeeds, the installer writes a managed metric block into `/etc/dhcpcd.conf` so `wlan1` stays preferred across reboots.
-- If the USB adapter is missing or the handoff fails, the installer brings `wlan0` back up and continues the scoreboard install.
+- When NetworkManager is active, the installer writes a persistent per-device management policy for `wlan1` and `wlan0`.
+- The installer creates two saved NetworkManager connections for the configured SSID: `scoreboard-wlan1` and `scoreboard-wlan0`.
+- `scoreboard-wlan1` gets the higher autoconnect priority and lower route metric, so boot preference stays with the USB adapter.
+- `scoreboard-wlan0` gets the lower autoconnect priority and higher route metric, so it remains the fallback when `wlan1` is absent.
+- If NetworkManager is not available, the helper still falls back to the explicit `wpa_supplicant` path.
 
 ## Chromium launch behavior
 

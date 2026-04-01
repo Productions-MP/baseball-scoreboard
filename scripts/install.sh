@@ -213,6 +213,8 @@ fi
 
 sudo systemctl disable --now scoreboard-fallback.service >/dev/null 2>&1 || true
 sudo rm -f "${SYSTEMD_DIR}/scoreboard-fallback.service"
+sudo systemctl disable --now scoreboard-wifi-switchover.service >/dev/null 2>&1 || true
+sudo rm -f "${SYSTEMD_DIR}/scoreboard-wifi-switchover.service"
 sudo systemctl disable --now scoreboard-display.service >/dev/null 2>&1 || true
 sudo systemctl disable --now scoreboard-streamdeck.service >/dev/null 2>&1 || true
 sudo install -m 0644 "${TMP_DIR}/scoreboard-local.service" "${LOCAL_SERVICE_TARGET}"
