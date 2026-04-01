@@ -7,12 +7,16 @@ LEGACY_ROOT="${APP_ROOT}/pi-fallback"
 LOCAL_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-local.service"
 DISPLAY_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-display.service"
 STREAMDECK_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-streamdeck.service"
+WIFI_FAILOVER_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-wifi-failover.service"
+WIFI_FAILOVER_TIMER_TEMPLATE="${APP_ROOT}/services/scoreboard-wifi-failover.timer"
 PAM_TEMPLATE="${APP_ROOT}/services/scoreboard-display.pam"
 WIFI_SWITCH_SCRIPT="${APP_ROOT}/scripts/switch-wifi-to-usb.sh"
 SYSTEMD_DIR="/etc/systemd/system"
 LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-local.service"
 DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-display.service"
 STREAMDECK_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-streamdeck.service"
+WIFI_FAILOVER_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-wifi-failover.service"
+WIFI_FAILOVER_TIMER_TARGET="${SYSTEMD_DIR}/scoreboard-wifi-failover.timer"
 PAM_TARGET="/etc/pam.d/scoreboard-display"
 SUDOERS_TARGET="/etc/sudoers.d/scoreboard-local-system-actions"
 ENV_FILE="${APP_ROOT}/.env"
@@ -197,6 +201,8 @@ chmod +x "${APP_ROOT}/scripts/"*.sh
 render_template "${LOCAL_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-local.service"
 render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-display.service"
 render_template "${STREAMDECK_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-streamdeck.service"
+render_template "${WIFI_FAILOVER_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-wifi-failover.service"
+render_template "${WIFI_FAILOVER_TIMER_TEMPLATE}" "${TMP_DIR}/scoreboard-wifi-failover.timer"
 render_template "${PAM_TEMPLATE}" "${TMP_DIR}/scoreboard-display.pam"
 
 SYSTEMCTL_BIN="$(command -v systemctl)"
@@ -215,17 +221,23 @@ sudo systemctl disable --now scoreboard-fallback.service >/dev/null 2>&1 || true
 sudo rm -f "${SYSTEMD_DIR}/scoreboard-fallback.service"
 sudo systemctl disable --now scoreboard-wifi-switchover.service >/dev/null 2>&1 || true
 sudo rm -f "${SYSTEMD_DIR}/scoreboard-wifi-switchover.service"
+sudo systemctl disable --now scoreboard-wifi-failover.timer >/dev/null 2>&1 || true
+sudo rm -f "${SYSTEMD_DIR}/scoreboard-wifi-failover.service" "${SYSTEMD_DIR}/scoreboard-wifi-failover.timer"
 sudo systemctl disable --now scoreboard-display.service >/dev/null 2>&1 || true
 sudo systemctl disable --now scoreboard-streamdeck.service >/dev/null 2>&1 || true
 sudo install -m 0644 "${TMP_DIR}/scoreboard-local.service" "${LOCAL_SERVICE_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-display.service" "${DISPLAY_SERVICE_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-streamdeck.service" "${STREAMDECK_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scoreboard-wifi-failover.service" "${WIFI_FAILOVER_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scoreboard-wifi-failover.timer" "${WIFI_FAILOVER_TIMER_TARGET}"
 sudo install -m 0644 "${TMP_DIR}/scoreboard-display.pam" "${PAM_TARGET}"
 sudo install -m 0440 "${SUDOERS_TEMP}" "${SUDOERS_TARGET}"
 sudo systemctl daemon-reload
 sudo systemctl enable --now scoreboard-local.service
 sudo systemctl enable --now scoreboard-display.service
 sudo systemctl enable --now scoreboard-streamdeck.service
+sudo systemctl enable --now scoreboard-wifi-failover.timer
+sudo systemctl start scoreboard-wifi-failover.service >/dev/null 2>&1 || true
 sudo systemctl set-default graphical.target
 
 LXDE_AUTOSTART_DIR="${APP_HOME}/.config/lxsession/LXDE-pi"

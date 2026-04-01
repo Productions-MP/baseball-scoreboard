@@ -236,6 +236,7 @@ ensure_nm_wifi_profile() {
   iface="$2"
   metric="$3"
   priority="$4"
+  autoconnect="$5"
 
   if sudo nmcli -t -f NAME connection show | grep -Fxq "${profile_name}"; then
     sudo nmcli connection modify "${profile_name}" \
@@ -247,8 +248,10 @@ ensure_nm_wifi_profile() {
 
   sudo nmcli connection modify "${profile_name}" \
     connection.interface-name "${iface}" \
-    connection.autoconnect yes \
+    connection.autoconnect "${autoconnect}" \
     connection.autoconnect-priority "${priority}" \
+    connection.autoconnect-retries 0 \
+    connection.wait-device-timeout 30000 \
     802-11-wireless.mode infrastructure \
     802-11-wireless-security.key-mgmt wpa-psk \
     802-11-wireless-security.psk "${SCOREBOARD_WIFI_PSK}" \
@@ -281,9 +284,9 @@ configure_networkmanager_profiles() {
     wait_for_nm_device_ready "${FALLBACK_IFACE}" 5 || true
   fi
 
-  ensure_nm_wifi_profile "${usb_connection_name}" "${USB_IFACE}" "${USB_METRIC}" 100
+  ensure_nm_wifi_profile "${usb_connection_name}" "${USB_IFACE}" "${USB_METRIC}" 100 yes
   if have_iface "${FALLBACK_IFACE}"; then
-    ensure_nm_wifi_profile "${fallback_connection_name}" "${FALLBACK_IFACE}" "${FALLBACK_METRIC}" 10
+    ensure_nm_wifi_profile "${fallback_connection_name}" "${FALLBACK_IFACE}" "${FALLBACK_METRIC}" 10 no
   fi
 
   sudo nmcli device modify "${USB_IFACE}" ipv4.route-metric "${USB_METRIC}" ipv6.route-metric "${USB_METRIC}" >/dev/null 2>&1 || true
@@ -300,10 +303,11 @@ configure_networkmanager_profiles() {
   wait_for_default_route "${USB_IFACE}"
 
   if [ "${DISABLE_FALLBACK_ON_SUCCESS}" = "1" ] && have_iface "${FALLBACK_IFACE}"; then
+    sudo nmcli connection down id "${fallback_connection_name}" >/dev/null 2>&1 || true
     sudo nmcli device disconnect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
   fi
 
-  log "NetworkManager profiles installed: ${usb_connection_name} preferred over ${fallback_connection_name}."
+  log "NetworkManager profiles installed: ${usb_connection_name} auto-connects, ${fallback_connection_name} is standby only."
 }
 
 connect_with_networkmanager() {
@@ -355,7 +359,7 @@ reconnect_fallback_iface() {
 
   bring_iface_up "${FALLBACK_IFACE}" || true
   if networkmanager_available; then
-    sudo nmcli device connect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
+    sudo nmcli connection up id "scoreboard-${FALLBACK_IFACE}" ifname "${FALLBACK_IFACE}" >/dev/null 2>&1 || sudo nmcli device connect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
   fi
 }
 

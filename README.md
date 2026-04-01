@@ -42,6 +42,7 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 |   |-- install.sh
 |   |-- install-fonts.sh
 |   |-- kiosk.sh
+|   |-- maintain-wifi-failover.sh
 |   |-- open-local.sh
 |   |-- run-cage-browser.sh
 |   |-- streamdeck_daemon.py
@@ -51,6 +52,8 @@ This repo does not use a desktop autostart file, LXDE, labwc session startup, or
 |   |-- scoreboard-display.pam
 |   |-- scoreboard-display.service
 |   |-- scoreboard-local.service
+|   |-- scoreboard-wifi-failover.service
+|   |-- scoreboard-wifi-failover.timer
 |   `-- scoreboard-streamdeck.service
 |-- shared/
 |   |-- default-state.json
@@ -206,6 +209,7 @@ The installer will:
 - install `scoreboard-local.service`
 - install `scoreboard-display.service`
 - install `scoreboard-streamdeck.service`
+- install and enable `scoreboard-wifi-failover.timer` for automatic failover/failback between `wlan1` and `wlan0`
 - install the PAM file Cage needs for the tty session
 - enable the services
 - set the default boot target to `graphical.target`
@@ -319,8 +323,9 @@ On install, `scripts/switch-wifi-to-usb.sh` now configures persistent `NetworkMa
 - Detection checks `wlan1`, `lsusb`, and the `wlan1` driver path for a USB-backed adapter.
 - When NetworkManager is active, the installer writes a persistent per-device management policy for `wlan1` and `wlan0`.
 - The installer creates two saved NetworkManager connections for the configured SSID: `scoreboard-wlan1` and `scoreboard-wlan0`.
-- `scoreboard-wlan1` gets the higher autoconnect priority and lower route metric, so boot preference stays with the USB adapter.
-- `scoreboard-wlan0` gets the lower autoconnect priority and higher route metric, so it remains the fallback when `wlan1` is absent.
+- `scoreboard-wlan1` gets the higher autoconnect priority, lower route metric, and normal autoconnect so boot preference stays with the USB adapter.
+- `scoreboard-wlan0` is saved as a standby profile with autoconnect disabled, so it does not join the network unless `wlan1` fails and the helper explicitly brings it up.
+- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi can fail over to `wlan0` if `wlan1` loses the route, then fail back to `wlan1` when it recovers.
 - If NetworkManager is not available, the helper still falls back to the explicit `wpa_supplicant` path.
 
 ## Chromium launch behavior

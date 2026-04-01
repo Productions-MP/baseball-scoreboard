@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Highlands Latin School scoreboard Wi-Fi failover checks
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=20
+AccuracySec=5
+Unit=scoreboard-wifi-failover.service
+
+[Install]
+WantedBy=timers.target
