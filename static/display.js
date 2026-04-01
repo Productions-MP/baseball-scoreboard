@@ -62,6 +62,9 @@
     const out = document.getElementById("count-out");
     const guestTotal = document.getElementById("guest-total");
     const homeTotal = document.getElementById("home-total");
+    const inningHeadCells = Array.from({ length: 10 }, function mapInningHead(_, index) {
+      return document.getElementById("inning-head-" + index);
+    });
     const overtimeCells = [
       document.getElementById("inning-head-9"),
       document.getElementById("guest-run-9"),
@@ -87,6 +90,12 @@
       ) || 0;
       const horizontalInset = Math.max(stroke - 1, 0);
       const verticalInset = Math.max(stroke - 1, 0);
+
+      inningHeadCells.forEach(function toggleActiveInningCell(cell, index) {
+        if (cell) {
+          cell.classList.toggle("is-active-inning", index === inningIndex);
+        }
+      });
 
       if (!activeInningHighlight || !headCell || !bottomCell) {
         if (activeInningHighlight) {

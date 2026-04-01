@@ -176,6 +176,7 @@ PY
 
 connect_with_networkmanager() {
   reused_existing_profile="0"
+  usb_connection_name="scoreboard-${USB_IFACE}"
   active_fallback_conn="$(sudo nmcli -t -f NAME,DEVICE connection show --active | awk -F: -v dev="${FALLBACK_IFACE}" '$2==dev {print $1; exit}')"
 
   sudo nmcli radio wifi on >/dev/null 2>&1 || true
@@ -183,7 +184,22 @@ connect_with_networkmanager() {
   bring_iface_up "${USB_IFACE}"
 
   if [ -n "${SCOREBOARD_WIFI_SSID}" ] && [ -n "${SCOREBOARD_WIFI_PSK}" ]; then
-    sudo nmcli device wifi connect "${SCOREBOARD_WIFI_SSID}" password "${SCOREBOARD_WIFI_PSK}" ifname "${USB_IFACE}" name "scoreboard-${USB_IFACE}" >/dev/null
+    if sudo nmcli -t -f NAME connection show | grep -Fxq "${usb_connection_name}"; then
+      sudo nmcli connection delete "${usb_connection_name}" >/dev/null
+    fi
+
+    sudo nmcli connection add type wifi ifname "${USB_IFACE}" con-name "${usb_connection_name}" ssid "${SCOREBOARD_WIFI_SSID}" >/dev/null
+    sudo nmcli connection modify "${usb_connection_name}" connection.interface-name "${USB_IFACE}" >/dev/null
+    sudo nmcli connection modify "${usb_connection_name}" 802-11-wireless.mode infrastructure >/dev/null
+    sudo nmcli connection modify "${usb_connection_name}" wifi-sec.key-mgmt wpa-psk >/dev/null
+    sudo nmcli connection modify "${usb_connection_name}" wifi-sec.psk "${SCOREBOARD_WIFI_PSK}" >/dev/null
+    sudo nmcli connection modify "${usb_connection_name}" \
+      connection.autoconnect yes \
+      connection.autoconnect-priority 100 \
+      ipv4.route-metric "${USB_METRIC}" \
+      ipv6.route-metric "${USB_METRIC}" >/dev/null
+
+    sudo nmcli connection up id "${usb_connection_name}" ifname "${USB_IFACE}" >/dev/null
   else
     reused_existing_profile="1"
     if [ -n "${active_fallback_conn}" ]; then
@@ -191,16 +207,16 @@ connect_with_networkmanager() {
     else
       sudo nmcli device connect "${USB_IFACE}" >/dev/null
     fi
-  fi
 
-  usb_connection_name="$(sudo nmcli -t -f GENERAL.CONNECTION device show "${USB_IFACE}" | awk -F: '/GENERAL\.CONNECTION/ {print $2; exit}')"
+    usb_connection_name="$(sudo nmcli -t -f GENERAL.CONNECTION device show "${USB_IFACE}" | awk -F: '/GENERAL\.CONNECTION/ {print $2; exit}')"
+  fi
 
   sudo nmcli device modify "${USB_IFACE}" ipv4.route-metric "${USB_METRIC}" ipv6.route-metric "${USB_METRIC}" >/dev/null 2>&1 || true
   if have_iface "${FALLBACK_IFACE}"; then
     sudo nmcli device modify "${FALLBACK_IFACE}" ipv4.route-metric "${FALLBACK_METRIC}" ipv6.route-metric "${FALLBACK_METRIC}" >/dev/null 2>&1 || true
   fi
 
-  if [ "${reused_existing_profile}" = "0" ] && [ -n "${usb_connection_name}" ] && [ "${usb_connection_name}" != "--" ]; then
+  if [ -n "${usb_connection_name}" ] && [ "${usb_connection_name}" != "--" ]; then
     sudo nmcli connection modify "${usb_connection_name}" connection.autoconnect yes connection.autoconnect-priority 100 connection.interface-name "${USB_IFACE}" ipv4.route-metric "${USB_METRIC}" ipv6.route-metric "${USB_METRIC}" >/dev/null 2>&1 || true
   fi
 
