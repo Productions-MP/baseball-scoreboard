@@ -4,6 +4,7 @@ from shared.scoreboard_designs import DEFAULT_SCOREBOARD_DESIGN_ID, get_scoreboa
 
 DEFAULT_STATE = {
     "design_id": DEFAULT_SCOREBOARD_DESIGN_ID,
+    "blackout": False,
     "inning": 1,
     "half": "top",
     "ball": 0,
@@ -25,6 +26,7 @@ def build_reset_state(current_state=None):
         reset_state["design_id"] = normalize_design_id(
             current_state.get("design_id", current_state.get("scoreboard_design_id"))
         )
+        reset_state["blackout"] = to_bool(current_state.get("blackout"), False)
 
     return normalize_state(reset_state)
 
@@ -38,6 +40,30 @@ def to_int(value, fallback=0):
 
 def clamp(value, minimum, maximum):
     return min(maximum, max(minimum, value))
+
+
+def to_bool(value, fallback=False):
+    if value is None:
+        return fallback
+
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        candidate = value.strip().lower()
+
+        if candidate in {"1", "true", "yes", "on"}:
+            return True
+
+        if candidate in {"0", "false", "no", "off"}:
+            return False
+
+        return fallback
+
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    return fallback
 
 
 def normalize_runs(value):
@@ -55,6 +81,7 @@ def normalize_state(data=None):
     source = data or {}
     return {
         "design_id": normalize_design_id(source.get("design_id", source.get("scoreboard_design_id"))),
+        "blackout": to_bool(source.get("blackout"), False),
         "inning": clamp(to_int(source.get("inning"), 1), 1, 10),
         "half": "bottom" if source.get("half") == "bottom" else "top",
         "ball": clamp(to_int(source.get("ball", source.get("balls")), 0), 0, 3),

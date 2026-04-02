@@ -17,6 +17,7 @@
   ];
 
   const BASE_STATE = {
+    blackout: false,
     inning: 1,
     half: "top",
     ball: 0,
@@ -40,6 +41,30 @@
 
   function clamp(value, minimum, maximum) {
     return Math.min(maximum, Math.max(minimum, value));
+  }
+
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      const candidate = value.trim().toLowerCase();
+
+      if (candidate === "1" || candidate === "true" || candidate === "yes" || candidate === "on") {
+        return true;
+      }
+
+      if (candidate === "0" || candidate === "false" || candidate === "no" || candidate === "off") {
+        return false;
+      }
+    }
+
+    if (typeof value === "number") {
+      return value !== 0;
+    }
+
+    return Boolean(fallback);
   }
 
   function normalizeDesign(design, fallback) {
@@ -113,6 +138,7 @@
 
     return {
       design_id: normalizeDesignId(source.design_id ?? source.scoreboard_design_id),
+      blackout: normalizeBoolean(source.blackout, false),
       inning: clamp(toInt(source.inning, 1), 1, 10),
       half: source.half === "bottom" ? "bottom" : "top",
       ball: clamp(toInt(source.ball ?? source.balls, 0), 0, 3),

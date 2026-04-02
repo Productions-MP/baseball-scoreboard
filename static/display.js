@@ -40,6 +40,17 @@
     heartbeatLed.classList.toggle("is-offline", !isLive);
   }
 
+  function setBlackout(isBlackout) {
+    const blackoutEnabled = Boolean(isBlackout);
+
+    document.body.classList.toggle("is-blackout", blackoutEnabled);
+
+    if (frame) {
+      frame.hidden = blackoutEnabled;
+      frame.setAttribute("aria-hidden", blackoutEnabled ? "true" : "false");
+    }
+  }
+
   function reloadForDesignChange() {
     if (reloadingForDesignChange) {
       return;
@@ -233,6 +244,7 @@
     }
 
     latestState = state;
+    setBlackout(state.blackout);
     renderer.render(state);
   }
 

@@ -69,6 +69,10 @@ input {
   overflow: hidden;
 }
 
+body.display-page.is-blackout {
+  background: #000000;
+}
+
 body.display-page,
 body.display-page *,
 body.display-page *::before,
@@ -90,6 +94,10 @@ body.display-page *::after {
   width: var(--scoreboard-design-width, 768px);
   height: var(--scoreboard-design-height, 192px);
   transform-origin: top left;
+}
+
+body.display-page.is-blackout .display-shell {
+  background: #000000;
 }
 
 .scoreboard-display {
@@ -823,6 +831,12 @@ body.display-page *::after {
   width: 100%;
   min-width: 0;
   justify-content: flex-start;
+}
+
+.menu-popover-button.is-active {
+  border-color: rgba(0, 154, 73, 0.5);
+  background: rgba(0, 154, 73, 0.18);
+  color: rgba(245, 241, 231, 0.98);
 }
 
 .danger-text {

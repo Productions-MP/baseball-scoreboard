@@ -11,6 +11,7 @@
   const redoButton = document.getElementById("redo-button");
   const menuButton = document.getElementById("menu-button");
   const menuPopover = document.getElementById("menu-popover");
+  const blackoutToggleButton = document.getElementById("blackout-toggle-button");
   const openUtilitiesButton = document.getElementById("open-utilities-button");
   const closeUtilitiesButton = document.getElementById("close-utilities-button");
   const logoutButton = document.getElementById("logout-button");
@@ -230,6 +231,20 @@
     homeBatArrow.classList.toggle("is-active", !guestBatting);
   }
 
+  function syncBlackoutToggle() {
+    if (!blackoutToggleButton) {
+      return;
+    }
+
+    const blackoutEnabled = Boolean(core.withDerived(state).blackout);
+    blackoutToggleButton.textContent = blackoutEnabled ? "Turn Blackout Off" : "Turn Blackout On";
+    blackoutToggleButton.classList.toggle("is-active", blackoutEnabled);
+    blackoutToggleButton.setAttribute(
+      "aria-pressed",
+      blackoutEnabled ? "true" : "false"
+    );
+  }
+
   function syncDesignSelection() {
     const design = core.withDerived(state).design;
 
@@ -284,6 +299,7 @@
 
   function render() {
     updateSummary();
+    syncBlackoutToggle();
     syncDesignSelection();
     syncEditorInputs();
     updateAuthOverlay();
@@ -573,6 +589,10 @@
       case "current-runs-up":
         adjustCurrentBattingRuns(nextState, 1);
         break;
+      case "toggle-blackout":
+        nextState.blackout = !nextState.blackout;
+        closeMenu();
+        break;
       default:
         return;
     }
@@ -793,6 +813,9 @@
   });
 
   openUtilitiesButton.addEventListener("click", openUtilities);
+  blackoutToggleButton.addEventListener("click", function onBlackoutToggle() {
+    handleAction("toggle-blackout");
+  });
   closeUtilitiesButton.addEventListener("click", closeUtilities);
   utilitiesOverlay.addEventListener("click", function onUtilitiesBackdrop(event) {
     if (event.target === utilitiesOverlay) {
