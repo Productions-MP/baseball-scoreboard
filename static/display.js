@@ -76,10 +76,17 @@
     const inningHeadCells = Array.from({ length: 10 }, function mapInningHead(_, index) {
       return document.getElementById("inning-head-" + index);
     });
+    const guestRunCells = Array.from({ length: 10 }, function mapGuestRunCell(_, index) {
+      return document.getElementById("guest-run-" + index);
+    });
+    const homeRunCells = Array.from({ length: 10 }, function mapHomeRunCell(_, index) {
+      return document.getElementById("home-run-" + index);
+    });
+    const runCells = guestRunCells.concat(homeRunCells);
     const overtimeCells = [
       document.getElementById("inning-head-9"),
-      document.getElementById("guest-run-9"),
-      document.getElementById("home-run-9"),
+      guestRunCells[9],
+      homeRunCells[9],
     ];
 
     function setCell(id, value) {
@@ -88,6 +95,18 @@
       if (element) {
         element.textContent = String(value);
       }
+    }
+
+    function updateActiveScoreCell(state) {
+      const inningIndex = Math.max(0, Math.min(9, state.inning - 1));
+      const activePrefix = state.half === "bottom" ? "home" : "guest";
+      const activeCellId = activePrefix + "-run-" + inningIndex;
+
+      runCells.forEach(function toggleActiveScoreCell(cell) {
+        if (cell) {
+          cell.classList.toggle("is-active-score", cell.id === activeCellId);
+        }
+      });
     }
 
     function updateActiveInningHighlight(state) {
@@ -137,7 +156,21 @@
         ) + "px";
     }
 
-    function shouldHideRun(run, index, state) {
+    function hasReachedRunCell(index, side, state) {
+      const inningNumber = index + 1;
+
+      if (side === "guest") {
+        return inningNumber <= state.inning;
+      }
+
+      return inningNumber < state.inning || (inningNumber === state.inning && state.half === "bottom");
+    }
+
+    function shouldHideRun(run, index, side, state) {
+      if (settings.blankUntilReached) {
+        return Number(run) <= 0 && !hasReachedRunCell(index, side, state);
+      }
+
       return settings.hideFutureInnings && index + 1 > state.inning && Number(run) <= 0;
     }
 
@@ -149,12 +182,12 @@
           (Array.isArray(state.home_runs) && Number(state.home_runs[9]) > 0);
 
         state.guest_runs.forEach(function renderGuest(run, index) {
-          const shouldHideFutureInning = shouldHideRun(run, index, state);
+          const shouldHideFutureInning = shouldHideRun(run, index, "guest", state);
           setCell("guest-run-" + index, shouldHideFutureInning ? "" : run);
         });
 
         state.home_runs.forEach(function renderHome(run, index) {
-          const shouldHideFutureInning = shouldHideRun(run, index, state);
+          const shouldHideFutureInning = shouldHideRun(run, index, "home", state);
           setCell("home-run-" + index, shouldHideFutureInning ? "" : run);
         });
 
@@ -179,19 +212,19 @@
         }
 
         if (guestArrow) {
-          guestArrow.classList.toggle("is-active", state.half !== "bottom");
+          guestArrow.classList.toggle("is-active", !settings.activeScoreCell && state.half !== "bottom");
         }
 
         if (homeArrow) {
-          homeArrow.classList.toggle("is-active", state.half === "bottom");
+          homeArrow.classList.toggle("is-active", !settings.activeScoreCell && state.half === "bottom");
         }
 
         if (guestTeamCell) {
-          guestTeamCell.classList.toggle("is-at-bat", state.half !== "bottom");
+          guestTeamCell.classList.toggle("is-at-bat", !settings.activeScoreCell && state.half !== "bottom");
         }
 
         if (homeTeamCell) {
-          homeTeamCell.classList.toggle("is-at-bat", state.half === "bottom");
+          homeTeamCell.classList.toggle("is-at-bat", !settings.activeScoreCell && state.half === "bottom");
         }
 
         if (root) {
@@ -204,10 +237,14 @@
           }
         });
 
-        updateActiveInningHighlight(state);
+        if (settings.activeScoreCell) {
+          updateActiveScoreCell(state);
+        } else {
+          updateActiveInningHighlight(state);
+        }
       },
       resize: function resize(state) {
-        if (state) {
+        if (!settings.activeScoreCell && state) {
           updateActiveInningHighlight(state);
         }
       },
@@ -220,9 +257,8 @@
     },
     "baseball-v2": function createBaseballV2Renderer() {
       return createBaseballLinescoreRenderer(document.querySelector(".scoreboard-display-baseball-v2"), {
-        activeInningStyle: "full-column",
-        fullHeightActiveInning: true,
-        hideFutureInnings: true,
+        activeScoreCell: true,
+        blankUntilReached: true,
       });
     },
   };
