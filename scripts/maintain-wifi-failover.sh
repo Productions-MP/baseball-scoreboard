@@ -7,6 +7,7 @@ ENV_FILE="${APP_ROOT}/.env"
 USB_IFACE="${SCOREBOARD_WIFI_USB_IFACE:-wlan1}"
 FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-wlan0}"
 USB_ADAPTER_ID="${SCOREBOARD_WIFI_USB_ADAPTER_ID:-0bda:c811}"
+ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-1}"
 PRIMARY_CONN="scoreboard-${USB_IFACE}"
 FALLBACK_CONN="scoreboard-${FALLBACK_IFACE}"
 
@@ -29,6 +30,7 @@ env_path = Path(sys.argv[1])
 keys = [
     "SCOREBOARD_WIFI_USB_IFACE",
     "SCOREBOARD_WIFI_FALLBACK_IFACE",
+    "SCOREBOARD_WIFI_ALLOW_FALLBACK",
 ]
 values = {key: "" for key in keys}
 
@@ -68,6 +70,10 @@ adapter_present() {
 
 default_route_uses_iface() {
   ip route show default 2>/dev/null | grep -q " dev $1"
+}
+
+fallback_enabled() {
+  [ "${ALLOW_FALLBACK}" = "1" ]
 }
 
 wait_for_default_route() {
@@ -113,9 +119,21 @@ disconnect_connection() {
   sudo nmcli device disconnect "${iface}" >/dev/null 2>&1 || true
 }
 
+keep_fallback_down() {
+  if ! have_iface "${FALLBACK_IFACE}"; then
+    return
+  fi
+
+  sudo nmcli device set "${FALLBACK_IFACE}" managed yes >/dev/null 2>&1 || true
+  sudo nmcli device set "${FALLBACK_IFACE}" autoconnect no >/dev/null 2>&1 || true
+  disconnect_connection "${FALLBACK_CONN}" "${FALLBACK_IFACE}"
+  sudo ip link set "${FALLBACK_IFACE}" down >/dev/null 2>&1 || true
+}
+
 load_env_overrides
 USB_IFACE="${SCOREBOARD_WIFI_USB_IFACE:-${USB_IFACE}}"
 FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-${FALLBACK_IFACE}}"
+ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-${ALLOW_FALLBACK}}"
 PRIMARY_CONN="scoreboard-${USB_IFACE}"
 FALLBACK_CONN="scoreboard-${FALLBACK_IFACE}"
 
@@ -126,15 +144,21 @@ fi
 
 if adapter_present && have_iface "${USB_IFACE}"; then
   if default_route_uses_iface "${USB_IFACE}"; then
-    disconnect_connection "${FALLBACK_CONN}" "${FALLBACK_IFACE}"
+    keep_fallback_down
     exit 0
   fi
 
   if bring_up_connection "${PRIMARY_CONN}" "${USB_IFACE}" && wait_for_default_route "${USB_IFACE}" 12; then
     log "Primary Wi-Fi restored on ${USB_IFACE}; disconnecting ${FALLBACK_IFACE}."
-    disconnect_connection "${FALLBACK_CONN}" "${FALLBACK_IFACE}"
+    keep_fallback_down
     exit 0
   fi
+fi
+
+if ! fallback_enabled; then
+  keep_fallback_down
+  log "USB Wi-Fi is configured as the only allowed uplink; keeping ${FALLBACK_IFACE} offline while retrying ${USB_IFACE}."
+  exit 1
 fi
 
 if have_iface "${FALLBACK_IFACE}" && bring_up_connection "${FALLBACK_CONN}" "${FALLBACK_IFACE}"; then

@@ -12,6 +12,7 @@ FALLBACK_METRIC="${SCOREBOARD_WIFI_FALLBACK_METRIC:-350}"
 USB_DRIVER_PATTERN="${SCOREBOARD_WIFI_USB_DRIVER_PATTERN:-8821cu|8821c|rtl8821cu}"
 WIFI_COUNTRY="${SCOREBOARD_WIFI_COUNTRY:-US}"
 DISABLE_FALLBACK_ON_SUCCESS="${SCOREBOARD_WIFI_DISABLE_WLAN0:-1}"
+ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-1}"
 NM_CONFIG_DIR="/etc/NetworkManager/conf.d"
 NM_MANAGED_CONFIG="${NM_CONFIG_DIR}/90-scoreboard-wifi-managed.conf"
 SCOREBOARD_WIFI_SSID="${SCOREBOARD_WIFI_SSID:-}"
@@ -42,6 +43,7 @@ keys = [
     "SCOREBOARD_WIFI_PSK",
     "SCOREBOARD_WIFI_COUNTRY",
     "SCOREBOARD_WIFI_DISABLE_WLAN0",
+    "SCOREBOARD_WIFI_ALLOW_FALLBACK",
     "SCOREBOARD_WIFI_USB_IFACE",
     "SCOREBOARD_WIFI_FALLBACK_IFACE",
     "SCOREBOARD_WIFI_USB_METRIC",
@@ -98,6 +100,10 @@ bring_iface_up() {
 
 default_route_uses_iface() {
   ip route show default 2>/dev/null | grep -q " dev $1"
+}
+
+fallback_enabled() {
+  [ "${ALLOW_FALLBACK}" = "1" ]
 }
 
 wait_for_default_route() {
@@ -285,13 +291,19 @@ configure_networkmanager_profiles() {
   fi
 
   ensure_nm_wifi_profile "${usb_connection_name}" "${USB_IFACE}" "${USB_METRIC}" 100 yes
-  if have_iface "${FALLBACK_IFACE}"; then
+  if have_iface "${FALLBACK_IFACE}" && fallback_enabled; then
     ensure_nm_wifi_profile "${fallback_connection_name}" "${FALLBACK_IFACE}" "${FALLBACK_METRIC}" 10 no
   fi
 
   sudo nmcli device modify "${USB_IFACE}" ipv4.route-metric "${USB_METRIC}" ipv6.route-metric "${USB_METRIC}" >/dev/null 2>&1 || true
-  if have_iface "${FALLBACK_IFACE}"; then
+  if have_iface "${FALLBACK_IFACE}" && fallback_enabled; then
     sudo nmcli device modify "${FALLBACK_IFACE}" ipv4.route-metric "${FALLBACK_METRIC}" ipv6.route-metric "${FALLBACK_METRIC}" >/dev/null 2>&1 || true
+  fi
+  if have_iface "${FALLBACK_IFACE}" && ! fallback_enabled; then
+    sudo nmcli device set "${FALLBACK_IFACE}" autoconnect no >/dev/null 2>&1 || true
+    if sudo nmcli -t -f NAME connection show | grep -Fxq "${fallback_connection_name}"; then
+      sudo nmcli connection modify "${fallback_connection_name}" connection.autoconnect no >/dev/null 2>&1 || true
+    fi
   fi
 
   if command -v systemctl >/dev/null 2>&1; then
@@ -307,7 +319,11 @@ configure_networkmanager_profiles() {
     sudo nmcli device disconnect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
   fi
 
-  log "NetworkManager profiles installed: ${usb_connection_name} auto-connects, ${fallback_connection_name} is standby only."
+  if fallback_enabled; then
+    log "NetworkManager profiles installed: ${usb_connection_name} auto-connects, ${fallback_connection_name} is standby only."
+  else
+    log "NetworkManager profiles installed: ${usb_connection_name} auto-connects and ${FALLBACK_IFACE} is kept offline."
+  fi
 }
 
 connect_with_networkmanager() {
@@ -353,6 +369,10 @@ connect_with_wpa_supplicant() {
 }
 
 reconnect_fallback_iface() {
+  if ! fallback_enabled; then
+    return
+  fi
+
   if ! have_iface "${FALLBACK_IFACE}"; then
     return
   fi
@@ -364,7 +384,7 @@ reconnect_fallback_iface() {
 }
 
 disable_fallback_iface() {
-  if [ "${DISABLE_FALLBACK_ON_SUCCESS}" != "1" ]; then
+  if [ "${DISABLE_FALLBACK_ON_SUCCESS}" != "1" ] && fallback_enabled; then
     return
   fi
 
@@ -373,6 +393,7 @@ disable_fallback_iface() {
   fi
 
   if networkmanager_available; then
+    sudo nmcli device set "${FALLBACK_IFACE}" autoconnect no >/dev/null 2>&1 || true
     sudo nmcli device disconnect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
   fi
   sudo ip link set "${FALLBACK_IFACE}" down >/dev/null 2>&1 || true
@@ -385,6 +406,7 @@ USB_METRIC="${SCOREBOARD_WIFI_USB_METRIC:-${USB_METRIC}}"
 FALLBACK_METRIC="${SCOREBOARD_WIFI_FALLBACK_METRIC:-${FALLBACK_METRIC}}"
 WIFI_COUNTRY="${SCOREBOARD_WIFI_COUNTRY:-${WIFI_COUNTRY}}"
 DISABLE_FALLBACK_ON_SUCCESS="${SCOREBOARD_WIFI_DISABLE_WLAN0:-${DISABLE_FALLBACK_ON_SUCCESS}}"
+ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-${ALLOW_FALLBACK}}"
 
 if ! adapter_present; then
   log "USB adapter ${USB_ADAPTER_ID} was not detected on ${USB_IFACE}; skipping switchover."
@@ -424,5 +446,10 @@ if connect_with_wpa_supplicant; then
 fi
 
 warn "USB Wi-Fi switchover failed. Re-enabling ${FALLBACK_IFACE}."
+if ! fallback_enabled; then
+  warn "Fallback Wi-Fi is disabled by SCOREBOARD_WIFI_ALLOW_FALLBACK=0, so ${FALLBACK_IFACE} will remain offline while ${USB_IFACE} is retried."
+  disable_fallback_iface
+  exit 1
+fi
 reconnect_fallback_iface
 exit 1

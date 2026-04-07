@@ -158,9 +158,14 @@ If you want the installer to move the active Wi-Fi connection from the built-in 
 ```text
 SCOREBOARD_WIFI_SSID=<your-ssid>
 SCOREBOARD_WIFI_PSK=<your-password>
+SCOREBOARD_WIFI_ALLOW_FALLBACK=0
 ```
 
 If those values are left blank and NetworkManager already has a saved profile for the current network, the installer will still try to reuse that profile on `wlan1`. The explicit SSID/PSK path is the most reliable option because it also lets the installer persist a dedicated `wlan1` profile.
+
+If your Pi is sealed up somewhere that makes the onboard radio unusable, set `SCOREBOARD_WIFI_ALLOW_FALLBACK=0` before you run the installer. That puts the board in USB-only Wi-Fi mode so the maintenance timer keeps retrying `wlan1` and never intentionally rejoins the network over `wlan0`.
+
+If you want the more forgiving maintenance behavior instead, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`. In that mode the timer keeps preferring and retrying `wlan1`, but if `wlan1` loses the route it will also bring up `wlan0` so you can still get in over the onboard radio. Once `wlan1` recovers, the helper shuts `wlan0` back down.
 
 ### 2. Apply the Pi display boot settings
 
@@ -205,11 +210,11 @@ The installer will:
 - install StreamDeck build/runtime dependencies
 - install bundled fonts from `public/fonts`
 - normalize `.env`
-- detect a Realtek `0bda:c811` USB adapter on `wlan1`, attempt to move the active Wi-Fi link there, and fall back to `wlan0` if the handoff fails
+- detect a Realtek `0bda:c811` USB adapter on `wlan1`, attempt to move the active Wi-Fi link there, and only fall back to `wlan0` if fallback is still enabled
 - install `scoreboard-local.service`
 - install `scoreboard-display.service`
 - install `scoreboard-streamdeck.service`
-- install and enable `scoreboard-wifi-failover.timer` for automatic failover/failback between `wlan1` and `wlan0`
+- install and enable `scoreboard-wifi-failover.timer` so the Pi keeps reasserting `wlan1`; with default settings it can also fail over/fail back with `wlan0`
 - install the PAM file Cage needs for the tty session
 - enable the services
 - set the default boot target to `graphical.target`
@@ -313,19 +318,22 @@ Supported local variables:
 - `SCOREBOARD_STREAMDECK_CONFIRM_SECONDS`
 - `SCOREBOARD_WIFI_SSID`
 - `SCOREBOARD_WIFI_PSK`
+- `SCOREBOARD_WIFI_ALLOW_FALLBACK`
 
 Legacy `FALLBACK_*` environment names are still accepted by the Python app so old Pi installs do not break immediately, but the `SCOREBOARD_*` names above are the primary interface.
 
 ## Wi-Fi switchover
 
-On install, `scripts/switch-wifi-to-usb.sh` now configures persistent `NetworkManager` profiles so `wlan1` is the preferred Wi-Fi interface and `wlan0` remains the fallback when the USB adapter is missing or unavailable.
+On install, `scripts/switch-wifi-to-usb.sh` now configures persistent `NetworkManager` profiles so `wlan1` is the preferred Wi-Fi interface. By default, `wlan0` remains the fallback when the USB adapter is missing or unavailable.
 
 - Detection checks `wlan1`, `lsusb`, and the `wlan1` driver path for a USB-backed adapter.
 - When NetworkManager is active, the installer writes a persistent per-device management policy for `wlan1` and `wlan0`.
 - The installer creates two saved NetworkManager connections for the configured SSID: `scoreboard-wlan1` and `scoreboard-wlan0`.
 - `scoreboard-wlan1` gets the higher autoconnect priority, lower route metric, and normal autoconnect so boot preference stays with the USB adapter.
 - `scoreboard-wlan0` is saved as a standby profile with autoconnect disabled, so it does not join the network unless `wlan1` fails and the helper explicitly brings it up.
-- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi can fail over to `wlan0` if `wlan1` loses the route, then fail back to `wlan1` when it recovers.
+- If `.env` sets `SCOREBOARD_WIFI_ALLOW_FALLBACK=0`, the helper keeps `wlan0` disconnected and powered down so the Pi stays in USB-only Wi-Fi mode.
+- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi keeps reasserting `wlan1`; when fallback is enabled it also brings up `wlan0` for maintenance access if `wlan1` stops working, then shuts `wlan0` back down after `wlan1` recovers.
+- When both radios are up, the route metrics still prefer `wlan1`, so the USB adapter remains the primary uplink.
 - If NetworkManager is not available, the helper still falls back to the explicit `wpa_supplicant` path.
 
 ## Chromium launch behavior
@@ -478,6 +486,10 @@ lsmod | grep 8821cu
 ```
 
 If the Pi is using `wpa_supplicant` instead of NetworkManager, make sure `.env` includes `SCOREBOARD_WIFI_SSID` and `SCOREBOARD_WIFI_PSK` before you rerun `scripts/install.sh`.
+
+If the onboard radio is physically unusable in your enclosure, add `SCOREBOARD_WIFI_ALLOW_FALLBACK=0` to `.env` and rerun `scripts/install.sh` so the timer stops ever bringing `wlan0` online.
+
+If you want maintenance SSH as a safety net, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`, rerun `scripts/install.sh`, and let the lower `SCOREBOARD_WIFI_FALLBACK_METRIC` keep `wlan1` as the preferred route whenever both links are available. The timer will also drop `wlan0` again once `wlan1` is healthy.
 
 ### Cursor is still visible
 

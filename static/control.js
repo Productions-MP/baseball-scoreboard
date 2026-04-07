@@ -6,29 +6,30 @@
   const core = window.ScoreboardCore;
   const config = core.getConfig();
   const HISTORY_LIMIT = 150;
+  const POWER_CONFIRM_MS = 2500;
 
   const undoButton = document.getElementById("undo-button");
   const redoButton = document.getElementById("redo-button");
   const menuButton = document.getElementById("menu-button");
-  const menuPopover = document.getElementById("menu-popover");
-  const blackoutToggleButton = document.getElementById("blackout-toggle-button");
-  const openUtilitiesButton = document.getElementById("open-utilities-button");
-  const closeUtilitiesButton = document.getElementById("close-utilities-button");
+  const powerButton = document.getElementById("power-button");
+  const powerLabel = document.getElementById("power-label");
+  const powerIndicator = document.getElementById("power-indicator");
+  const menuPanel = document.getElementById("menu-panel");
+  const menuPanelBackdrop = document.getElementById("menu-panel-backdrop");
+  const menuPanelBody = menuPanel ? menuPanel.querySelector(".menu-panel-body") : null;
+  const menuBackButton = document.getElementById("menu-back-button");
+  const menuPanelTitle = document.getElementById("menu-panel-title");
+  const menuCloseButton = document.getElementById("menu-close-button");
   const logoutButton = document.getElementById("logout-button");
-  const utilitiesOverlay = document.getElementById("utilities-overlay");
+  const inningEditOverlay = document.getElementById("inning-edit-overlay");
   const authOverlay = document.getElementById("auth-overlay");
   const authNote = document.getElementById("auth-note");
   const authSkipButton = document.getElementById("auth-skip-button");
   const controlKeyInput = document.getElementById("control-key-input");
   const saveKeyButton = document.getElementById("save-key-button");
   const previewFrame = document.getElementById("control-preview-iframe");
-  const designPicker = document.getElementById("scoreboard-design-picker");
   const designSelect = document.getElementById("scoreboard-design-select");
-  const designTrigger = document.getElementById("scoreboard-design-trigger");
-  const designTriggerText = document.getElementById("scoreboard-design-trigger-text");
-  const designMenu = document.getElementById("scoreboard-design-menu");
   const designOptions = Array.from(document.querySelectorAll("[data-design-option]"));
-  const designDimensionsNote = document.getElementById("design-dimensions-note");
   const liveInningLabel = document.getElementById("live-inning-label");
   const ballValue = document.getElementById("ball-value");
   const strikeValue = document.getElementById("strike-value");
@@ -44,6 +45,13 @@
   const restartSystemButton = document.getElementById("restart-system-button");
   const rebootPiButton = document.getElementById("reboot-pi-button");
   const shutdownPiButton = document.getElementById("shutdown-pi-button");
+  const menuLevels = {
+    main: { title: "Menu", element: document.getElementById("menu-level-main") },
+    admin: { title: "Admin", element: document.getElementById("menu-level-admin") },
+    design: { title: "Design", element: document.getElementById("menu-level-design") },
+    backup: { title: "Backup / Reset", element: document.getElementById("menu-level-backup") },
+    system: { title: "System Controls", element: document.getElementById("menu-level-system") },
+  };
 
   let state = config.initialState ? core.serializeState(config.initialState) : core.cloneDefaultState();
   let saveInFlight = false;
@@ -54,6 +62,9 @@
   let authDismissed = false;
   let undoStack = [];
   let redoStack = [];
+  let activeMenuLevel = "main";
+  let menuHistory = [];
+  let powerConfirmTimeoutId = 0;
 
   function formatDesignLabel(design) {
     return design.label + " (" + design.width + "x" + design.height + ")";
@@ -137,62 +148,109 @@
   }
 
   function toggleOverlay(element, isVisible) {
+    if (!element) {
+      return;
+    }
+
     element.hidden = !isVisible;
   }
 
-  function closeMenu() {
-    menuPopover.hidden = true;
+  function cancelPowerConfirm() {
+    if (powerConfirmTimeoutId) {
+      window.clearTimeout(powerConfirmTimeoutId);
+      powerConfirmTimeoutId = 0;
+    }
+
+    if (powerButton) {
+      powerButton.classList.remove("is-confirming");
+    }
+  }
+
+  function showMenuLevel(levelKey) {
+    const nextLevel = menuLevels[levelKey] || menuLevels.main;
+
+    Object.keys(menuLevels).forEach(function hideOtherLevels(key) {
+      const level = menuLevels[key];
+
+      if (level && level.element) {
+        level.element.hidden = key !== levelKey;
+      }
+    });
+
+    activeMenuLevel = levelKey;
+
+    if (menuPanelTitle) {
+      menuPanelTitle.textContent = nextLevel.title;
+    }
+
+    if (menuBackButton) {
+      menuBackButton.hidden = menuHistory.length === 0;
+    }
+
+    if (menuPanelBody) {
+      menuPanelBody.scrollTop = 0;
+    }
+  }
+
+  function navigateMenuForward(levelKey) {
+    if (!menuLevels[levelKey] || levelKey === activeMenuLevel) {
+      return;
+    }
+
+    cancelPowerConfirm();
+    menuHistory.push(activeMenuLevel);
+    showMenuLevel(levelKey);
+  }
+
+  function navigateMenuBack() {
+    if (menuHistory.length === 0) {
+      return;
+    }
+
+    cancelPowerConfirm();
+    showMenuLevel(menuHistory.pop());
+  }
+
+  function closeMenuPanel() {
+    cancelPowerConfirm();
+    menuHistory = [];
+    showMenuLevel("main");
+    menuPanel.hidden = true;
     menuButton.setAttribute("aria-expanded", "false");
   }
 
-  function openDesignMenu() {
-    if (!designPicker || !designMenu || !designTrigger) {
+  function openMenuPanel() {
+    menuHistory = [];
+    showMenuLevel("main");
+    menuPanel.hidden = false;
+    menuButton.setAttribute("aria-expanded", "true");
+  }
+
+  function handlePowerClick() {
+    const blackoutEnabled = Boolean(core.withDerived(state).blackout);
+
+    if (!blackoutEnabled && powerButton && !powerButton.classList.contains("is-confirming")) {
+      cancelPowerConfirm();
+      powerButton.classList.add("is-confirming");
+      syncPowerButton();
+      powerConfirmTimeoutId = window.setTimeout(function clearPendingPower() {
+        cancelPowerConfirm();
+        syncPowerButton();
+      }, POWER_CONFIRM_MS);
       return;
     }
 
-    designPicker.classList.add("is-open");
-    designMenu.hidden = false;
-    designTrigger.setAttribute("aria-expanded", "true");
-  }
-
-  function closeDesignMenu() {
-    if (!designPicker || !designMenu || !designTrigger) {
-      return;
-    }
-
-    designPicker.classList.remove("is-open");
-    designMenu.hidden = true;
-    designTrigger.setAttribute("aria-expanded", "false");
-  }
-
-  function focusDesignOptionByValue(value) {
-    const match = designOptions.find(function findOption(option) {
-      return option.dataset.value === value;
-    });
-
-    if (match) {
-      match.focus();
-    }
+    cancelPowerConfirm();
+    handleAction("toggle-blackout");
   }
 
   function commitDesignSelection(value) {
     if (!designSelect || !value || designSelect.value === value) {
-      closeDesignMenu();
       return;
     }
 
     designSelect.value = value;
     designSelect.dispatchEvent(new Event("change", { bubbles: true }));
-    closeDesignMenu();
-  }
-
-  function openUtilities() {
-    closeMenu();
-    toggleOverlay(utilitiesOverlay, true);
-  }
-
-  function closeUtilities() {
-    toggleOverlay(utilitiesOverlay, false);
   }
 
   function updateAuthOverlay() {
@@ -231,18 +289,24 @@
     homeBatArrow.classList.toggle("is-active", !guestBatting);
   }
 
-  function syncBlackoutToggle() {
-    if (!blackoutToggleButton) {
+  function syncPowerButton() {
+    if (!powerButton || !powerLabel) {
       return;
     }
 
     const blackoutEnabled = Boolean(core.withDerived(state).blackout);
-    blackoutToggleButton.textContent = blackoutEnabled ? "Turn Blackout Off" : "Turn Blackout On";
-    blackoutToggleButton.classList.toggle("is-active", blackoutEnabled);
-    blackoutToggleButton.setAttribute(
-      "aria-pressed",
-      blackoutEnabled ? "true" : "false"
-    );
+    const isOn = !blackoutEnabled;
+    const isConfirming = powerButton.classList.contains("is-confirming");
+
+    powerButton.classList.toggle("is-on", isOn);
+
+    if (powerIndicator) {
+      powerIndicator.setAttribute("aria-hidden", "true");
+    }
+
+    powerLabel.textContent = isOn
+      ? (isConfirming ? "Confirm Turn Off" : "Turn Off")
+      : "Turn On";
   }
 
   function syncDesignSelection() {
@@ -252,19 +316,17 @@
       designSelect.value = design.id;
     }
 
-    if (designTriggerText) {
-      designTriggerText.textContent = formatDesignLabel(design);
-    }
-
     designOptions.forEach(function syncDesignOption(option) {
       const isSelected = option.dataset.value === design.id;
       option.classList.toggle("is-selected", isSelected);
-      option.setAttribute("aria-selected", String(isSelected));
-    });
+      option.setAttribute("aria-pressed", String(isSelected));
 
-    if (designDimensionsNote) {
-      designDimensionsNote.textContent = formatDesignLabel(design);
-    }
+      const status = option.querySelector("[data-design-status]");
+
+      if (status) {
+        status.hidden = !isSelected;
+      }
+    });
 
     if (previewFrame) {
       previewFrame.style.aspectRatio = design.width + " / " + design.height;
@@ -299,7 +361,7 @@
 
   function render() {
     updateSummary();
-    syncBlackoutToggle();
+    syncPowerButton();
     syncDesignSelection();
     syncEditorInputs();
     updateAuthOverlay();
@@ -591,7 +653,7 @@
         break;
       case "toggle-blackout":
         nextState.blackout = !nextState.blackout;
-        closeMenu();
+        closeMenuPanel();
         break;
       default:
         return;
@@ -686,7 +748,7 @@
       const payload = await core.runSystemAction(actionName);
       setConnectionState(connectionLabel, true);
       setStatusMessage(payload.message || actionLabel + " requested.", false);
-      closeUtilities();
+      closeMenuPanel();
     } catch (error) {
       if (error.status === 401) {
         handleControlKeyRejected(actionLabel);
@@ -698,18 +760,15 @@
 
   document.addEventListener("click", function onDocumentClick(event) {
     const actionTrigger = event.target.closest("[data-action]");
+    const closeOverlayTrigger = event.target.closest("[data-close-overlay]");
 
     if (actionTrigger) {
       handleAction(actionTrigger.dataset.action);
       return;
     }
 
-    if (!menuPopover.hidden && !event.target.closest("#menu-popover") && !event.target.closest("#menu-button")) {
-      closeMenu();
-    }
-
-    if (designMenu && !designMenu.hidden && !event.target.closest("#scoreboard-design-picker")) {
-      closeDesignMenu();
+    if (closeOverlayTrigger) {
+      toggleOverlay(document.getElementById(closeOverlayTrigger.dataset.closeOverlay), false);
     }
   });
 
@@ -742,31 +801,6 @@
     });
   }
 
-  if (designTrigger) {
-    designTrigger.addEventListener("click", function onDesignTriggerClick() {
-      if (!designMenu) {
-        return;
-      }
-
-      if (designMenu.hidden) {
-        openDesignMenu();
-        focusDesignOptionByValue(designSelect.value);
-      } else {
-        closeDesignMenu();
-      }
-    });
-
-    designTrigger.addEventListener("keydown", function onDesignTriggerKeydown(event) {
-      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-
-      event.preventDefault();
-      openDesignMenu();
-      focusDesignOptionByValue(designSelect.value);
-    });
-  }
-
   designOptions.forEach(function bindDesignOption(option, index) {
     option.addEventListener("click", function onDesignOptionClick() {
       commitDesignSelection(option.dataset.value);
@@ -775,8 +809,11 @@
     option.addEventListener("keydown", function onDesignOptionKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeDesignMenu();
-        designTrigger.focus();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
         return;
       }
 
@@ -807,28 +844,60 @@
   });
 
   menuButton.addEventListener("click", function toggleMenu() {
-    const isOpening = menuPopover.hidden;
-    menuPopover.hidden = !isOpening;
-    menuButton.setAttribute("aria-expanded", String(isOpening));
-  });
-
-  openUtilitiesButton.addEventListener("click", openUtilities);
-  blackoutToggleButton.addEventListener("click", function onBlackoutToggle() {
-    handleAction("toggle-blackout");
-  });
-  closeUtilitiesButton.addEventListener("click", closeUtilities);
-  utilitiesOverlay.addEventListener("click", function onUtilitiesBackdrop(event) {
-    if (event.target === utilitiesOverlay) {
-      closeUtilities();
+    if (menuPanel.hidden) {
+      openMenuPanel();
+    } else {
+      closeMenuPanel();
     }
   });
+
+  if (powerButton) {
+    powerButton.addEventListener("click", handlePowerClick);
+  }
+
+  if (menuBackButton) {
+    menuBackButton.addEventListener("click", navigateMenuBack);
+  }
+
+  if (menuCloseButton) {
+    menuCloseButton.addEventListener("click", closeMenuPanel);
+  }
+
+  if (menuPanelBackdrop) {
+    menuPanelBackdrop.addEventListener("click", closeMenuPanel);
+  }
+
+  if (menuPanel) {
+    menuPanel.addEventListener("click", function onMenuPanelClick(event) {
+      const navigateTrigger = event.target.closest("[data-navigate-menu]");
+      const openOverlayTrigger = event.target.closest("[data-open-overlay]");
+
+      if (navigateTrigger) {
+        navigateMenuForward(navigateTrigger.dataset.navigateMenu);
+        return;
+      }
+
+      if (openOverlayTrigger) {
+        closeMenuPanel();
+        toggleOverlay(document.getElementById(openOverlayTrigger.dataset.openOverlay), true);
+      }
+    });
+  }
+
+  if (inningEditOverlay) {
+    inningEditOverlay.addEventListener("click", function onInningEditBackdrop(event) {
+      if (event.target === inningEditOverlay) {
+        toggleOverlay(inningEditOverlay, false);
+      }
+    });
+  }
 
   logoutButton.addEventListener("click", function onLogout() {
     core.setControlKey("");
     controlKeyInput.value = "";
     authDismissed = false;
-    closeMenu();
-    closeUtilities();
+    closeMenuPanel();
+    toggleOverlay(inningEditOverlay, false);
     render();
     setStatusMessage("Stored control password cleared.", false);
   });
@@ -923,7 +992,7 @@
   rebootPiButton.addEventListener("click", function onRebootPi() {
     runSystemAction(
       "reboot-pi",
-      "Reboot Scoreboard",
+      "Reboot Raspberry Pi",
       "Reboot the scoreboard now? This restarts the Raspberry Pi and disconnects all controllers until boot finishes.",
       "SCOREBOARD REBOOTING"
     );
@@ -932,14 +1001,14 @@
   shutdownPiButton.addEventListener("click", function onShutdownPi() {
     runSystemAction(
       "shutdown-pi",
-      "Shutdown Scoreboard",
+      "Shutdown Raspberry Pi",
       "Shut down the scoreboard now? This powers off the Raspberry Pi, and you will need to turn it back on manually.",
       "SCOREBOARD SHUTDOWN"
     );
   });
 
   buildInningEditor();
-  closeMenu();
+  closeMenuPanel();
   updateHistoryButtons();
   render();
   loadState();

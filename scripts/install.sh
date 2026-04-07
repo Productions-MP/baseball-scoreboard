@@ -181,6 +181,7 @@ ordered_keys = [
     "SCOREBOARD_STREAMDECK_CONFIRM_SECONDS",
     "SCOREBOARD_WIFI_SSID",
     "SCOREBOARD_WIFI_PSK",
+    "SCOREBOARD_WIFI_ALLOW_FALLBACK",
 ]
 
 new_lines = []
@@ -251,7 +252,11 @@ rm -f "${APP_HOME}/Desktop/Scoreboard Display.desktop" "${APP_HOME}/Desktop/Scor
 
 if [ -x "${WIFI_SWITCH_SCRIPT}" ]; then
   if ! "${WIFI_SWITCH_SCRIPT}"; then
-    echo "Warning: USB Wi-Fi switchover did not complete. wlan0 remains available as the fallback interface." >&2
+    if grep -q '^SCOREBOARD_WIFI_ALLOW_FALLBACK=0$' "${ENV_FILE}"; then
+      echo "Warning: USB Wi-Fi switchover did not complete while fallback was disabled. The board will keep retrying ${APP_ROOT}/scripts/maintain-wifi-failover.sh against wlan1 only." >&2
+    else
+      echo "Warning: USB Wi-Fi switchover did not complete. wlan0 remains available as the fallback interface." >&2
+    fi
   fi
 fi
 

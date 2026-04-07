@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.\\(html|js|css|json|py\\)$\")",
+      "Bash(node -c static/control.js)"
+    ]
+  }
+}
