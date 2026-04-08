@@ -88,13 +88,81 @@
       guestRunCells[9],
       homeRunCells[9],
     ];
+    const fitMeasure = document.createElement("span");
+
+    fitMeasure.className = "score-fit-measure";
+    document.body.appendChild(fitMeasure);
+
+    function setNumericCellValue(element, value) {
+      if (!element) {
+        return;
+      }
+
+      const text = String(value);
+      const digitCount = (text.match(/\d/g) || []).length;
+      let valueNode = element.querySelector(".score-value");
+
+      if (!valueNode) {
+        element.textContent = "";
+        valueNode = document.createElement("span");
+        valueNode.className = "score-value";
+        element.appendChild(valueNode);
+      }
+
+      valueNode.textContent = text;
+      element.classList.toggle("is-single-digit-score", digitCount <= 1);
+      element.classList.toggle("is-two-digit-score", digitCount === 2);
+      element.classList.toggle("is-three-digit-score", digitCount >= 3);
+      fitNumericCell(element, valueNode, text, digitCount);
+    }
+
+    function fitNumericCell(element, valueNode, text, digitCount) {
+      const computed = window.getComputedStyle(element);
+      const baseFontSize = parseFloat(computed.fontSize) || 16;
+      const availableWidth = Math.max(element.clientWidth - 8, 1);
+      const availableHeight = Math.max(element.clientHeight - 2, 1);
+      let letterSpacing = computed.letterSpacing;
+
+      if (digitCount === 2) {
+        letterSpacing = "-0.06em";
+      } else if (digitCount >= 3) {
+        letterSpacing = "-0.1em";
+      }
+
+      const isTotalCell =
+        element.classList.contains("total-cell") || element.classList.contains("v2-total-cell");
+      let translateX = isTotalCell ? "-0.02em" : "0";
+
+      if (digitCount === 2) {
+        translateX = isTotalCell ? "-0.1em" : "-0.09em";
+      } else if (digitCount >= 3) {
+        translateX = isTotalCell ? "-0.12em" : "-0.07em";
+      }
+
+      valueNode.style.fontSize = baseFontSize + "px";
+      valueNode.style.letterSpacing = letterSpacing;
+      valueNode.style.textIndent = digitCount <= 1 ? "0.04em" : "0";
+      valueNode.style.transform = "translateX(" + translateX + ")";
+
+      fitMeasure.textContent = text;
+      fitMeasure.style.fontFamily = computed.fontFamily;
+      fitMeasure.style.fontWeight = computed.fontWeight;
+      fitMeasure.style.fontStyle = computed.fontStyle;
+      fitMeasure.style.fontSize = baseFontSize + "px";
+      fitMeasure.style.letterSpacing = letterSpacing;
+      fitMeasure.style.textIndent = "0";
+
+      const measuredWidth = Math.max(fitMeasure.getBoundingClientRect().width, 1);
+      const measuredHeight = Math.max(fitMeasure.getBoundingClientRect().height, 1);
+      const widthScale = availableWidth / measuredWidth;
+      const heightScale = availableHeight / measuredHeight;
+      const fittedFontSize = Math.max(baseFontSize * Math.min(widthScale, heightScale, 1), 8);
+
+      valueNode.style.fontSize = fittedFontSize + "px";
+    }
 
     function setCell(id, value) {
-      const element = document.getElementById(id);
-
-      if (element) {
-        element.textContent = String(value);
-      }
+      setNumericCellValue(document.getElementById(id), value);
     }
 
     function updateActiveScoreCell(state) {
@@ -192,11 +260,11 @@
         });
 
         if (guestTotal) {
-          guestTotal.textContent = String(state.guest_total);
+          setNumericCellValue(guestTotal, state.guest_total);
         }
 
         if (homeTotal) {
-          homeTotal.textContent = String(state.home_total);
+          setNumericCellValue(homeTotal, state.home_total);
         }
 
         if (ball) {
@@ -313,6 +381,13 @@
     setScale();
     renderer.resize(latestState);
   });
+  if (document.fonts && typeof document.fonts.ready === "object") {
+    document.fonts.ready.then(function onFontsReady() {
+      if (latestState) {
+        renderer.render(latestState);
+      }
+    });
+  }
   window.addEventListener("mousemove", hideCursor, { passive: true });
   window.addEventListener("pointermove", hideCursor, { passive: true });
   document.addEventListener("visibilitychange", hideCursor);
