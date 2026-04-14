@@ -297,6 +297,21 @@
     );
   }
 
+  function fetchWifiSettings() {
+    return requestJson(getConfig().endpoints.getWifiSettings, { method: "GET" }, true);
+  }
+
+  function updateWifiSettings(settings) {
+    return requestJson(
+      getConfig().endpoints.updateWifiSettings,
+      {
+        method: "POST",
+        body: JSON.stringify(settings || {}),
+      },
+      true
+    );
+  }
+
   function buildBackupFilename() {
     return "scoreboard-backup-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
   }
@@ -439,10 +454,12 @@
     getControlKey: getControlKey,
     getDesignById: getDesignById,
     getScoreboardDesigns: getScoreboardDesigns,
+    fetchWifiSettings: fetchWifiSettings,
     resetState: resetState,
     runSystemAction: runSystemAction,
     serializeState: serializeState,
     setControlKey: setControlKey,
+    updateWifiSettings: updateWifiSettings,
     updateState: updateState,
     withDerived: withDerived,
   };

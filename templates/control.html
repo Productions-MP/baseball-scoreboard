@@ -226,6 +226,14 @@
           </div>
 
           <div class="menu-level" id="menu-level-system" hidden>
+            <button class="menu-nav-item" type="button" data-navigate-menu="wifi-fallback">
+              <span class="menu-nav-item-label">Wi-Fi Fallback</span>
+              <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
+            <button class="menu-nav-item" type="button" data-navigate-menu="wifi-grace">
+              <span class="menu-nav-item-label">Wi-Fi Recovery Period</span>
+              <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
             <button class="menu-nav-item" type="button" id="restart-system-button">
               <span class="menu-nav-item-label">Restart Application</span>
             </button>
@@ -234,6 +242,134 @@
             </button>
             <button class="menu-nav-item menu-nav-item-danger" type="button" id="shutdown-pi-button">
               <span class="menu-nav-item-label">Shutdown Raspberry Pi</span>
+            </button>
+          </div>
+
+          <div class="menu-level" id="menu-level-wifi-fallback" hidden>
+            <p class="inline-note" id="wifi-fallback-note" data-wifi-settings-note></p>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-fallback-option
+              data-value="allow-fallback"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">Allow `wlan0` after delay</span>
+                <span class="menu-nav-item-meta">Built-in radio can come up only after the recovery grace window expires.</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-fallback-status hidden>
+                Active
+              </span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-fallback-option
+              data-value="usb-only"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">USB only</span>
+                <span class="menu-nav-item-meta">Keep `wlan0` offline and keep retrying `wlan1` no matter what.</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-fallback-status hidden>
+                Active
+              </span>
+            </button>
+          </div>
+
+          <div class="menu-level" id="menu-level-wifi-grace" hidden>
+            <p class="inline-note" id="wifi-grace-note" data-wifi-settings-note></p>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-grace-option
+              data-value="0"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">No delay</span>
+                <span class="menu-nav-item-meta">0 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-grace-status hidden>
+                Active
+              </span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-grace-option
+              data-value="60"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">1 minute</span>
+                <span class="menu-nav-item-meta">60 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-grace-status hidden>
+                Active
+              </span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-grace-option
+              data-value="120"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">2 minutes</span>
+                <span class="menu-nav-item-meta">120 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-grace-status hidden>
+                Active
+              </span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-grace-option
+              data-value="180"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">3 minutes</span>
+                <span class="menu-nav-item-meta">180 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-grace-status hidden>
+                Active
+              </span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-grace-option
+              data-value="300"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">5 minutes</span>
+                <span class="menu-nav-item-meta">300 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-grace-status hidden>
+                Active
+              </span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-wifi-grace-option
+              data-value="600"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">10 minutes</span>
+                <span class="menu-nav-item-meta">600 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-wifi-grace-status hidden>
+                Active
+              </span>
             </button>
           </div>
         </div>
@@ -267,6 +403,8 @@
           updateState: "/api/state",
           resetState: "/api/reset",
           systemAction: "/api/system",
+          getWifiSettings: "/api/settings/wifi",
+          updateWifiSettings: "/api/settings/wifi",
           websocket: "/ws"
         }
       };

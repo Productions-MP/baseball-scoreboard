@@ -41,6 +41,10 @@ SYSTEM_ACTIONS = {
         "message": "Shutdown Scoreboard requested. The Pi will power off shortly.",
     },
 }
+WIFI_SETTING_DEFAULTS = {
+    "SCOREBOARD_WIFI_ALLOW_FALLBACK": "1",
+    "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": "180",
+}
 
 def load_env_file(path):
     if not os.path.exists(path):
@@ -66,6 +70,15 @@ def env_value(primary_name, legacy_name=None, default=""):
         return default
 
     return value
+
+
+def strip_wrapping_quotes(value):
+    text = str(value or "").strip()
+
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
+        return text[1:-1]
+
+    return text
 
 
 for env_file in ENV_FILES:
@@ -260,6 +273,136 @@ def parse_system_action(value):
         raise ValueError("Unsupported system action.")
 
     return action_name
+
+
+def resolve_env_file_path():
+    for path in ENV_FILES:
+        if os.path.exists(path):
+            return path
+
+    return ENV_FILES[-1]
+
+
+def read_env_assignments(path):
+    assignments = {}
+
+    if not os.path.exists(path):
+        return assignments
+
+    with open(path, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            stripped = raw_line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in raw_line:
+                continue
+
+            key, value = raw_line.split("=", 1)
+            assignments[key.strip()] = strip_wrapping_quotes(value)
+
+    return assignments
+
+
+def read_wifi_settings():
+    env_path = resolve_env_file_path()
+    assignments = read_env_assignments(env_path)
+    allow_fallback_raw = assignments.get(
+        "SCOREBOARD_WIFI_ALLOW_FALLBACK",
+        os.environ.get("SCOREBOARD_WIFI_ALLOW_FALLBACK", WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_ALLOW_FALLBACK"]),
+    )
+    grace_raw = assignments.get(
+        "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+        os.environ.get(
+            "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+            WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"],
+        ),
+    )
+
+    try:
+        grace_seconds = int(str(grace_raw).strip() or WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"])
+    except ValueError:
+        grace_seconds = int(WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"])
+
+    return {
+        "env_file": env_path,
+        "allow_fallback": str(allow_fallback_raw).strip() != "0",
+        "primary_recovery_grace_seconds": max(0, grace_seconds),
+    }
+
+
+def parse_wifi_settings_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Wi-Fi settings payload must be a JSON object.")
+
+    fallback_mode = str(payload.get("fallback_mode", "")).strip().lower()
+
+    if fallback_mode not in {"usb-only", "allow-fallback"}:
+        raise ValueError("Fallback mode must be 'usb-only' or 'allow-fallback'.")
+
+    grace_value = payload.get("primary_recovery_grace_seconds", 0)
+
+    try:
+        grace_seconds = int(grace_value)
+    except (TypeError, ValueError):
+        raise ValueError("Recovery grace must be a whole number of seconds.")
+
+    if grace_seconds < 0:
+        raise ValueError("Recovery grace cannot be negative.")
+
+    if grace_seconds > 86400:
+        raise ValueError("Recovery grace must be 86400 seconds or less.")
+
+    return {
+        "SCOREBOARD_WIFI_ALLOW_FALLBACK": "1" if fallback_mode == "allow-fallback" else "0",
+        "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": str(grace_seconds),
+    }
+
+
+def write_env_settings(updates):
+    env_path = resolve_env_file_path()
+    os.makedirs(os.path.dirname(env_path), exist_ok=True)
+    existing_lines = []
+
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as handle:
+            existing_lines = handle.readlines()
+
+    rendered_lines = []
+    written_keys = set()
+
+    for raw_line in existing_lines:
+        stripped = raw_line.strip()
+
+        if not stripped or stripped.startswith("#") or "=" not in raw_line:
+            rendered_lines.append(raw_line)
+            continue
+
+        key, _value = raw_line.split("=", 1)
+        normalized_key = key.strip()
+
+        if normalized_key not in updates:
+            rendered_lines.append(raw_line)
+            continue
+
+        if normalized_key in written_keys:
+            continue
+
+        rendered_lines.append(f"{normalized_key}={updates[normalized_key]}\n")
+        written_keys.add(normalized_key)
+
+    for key, value in updates.items():
+        if key not in written_keys:
+            rendered_lines.append(f"{key}={value}\n")
+
+    temp_path = env_path + ".tmp"
+
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        handle.writelines(rendered_lines)
+
+    os.replace(temp_path, env_path)
+
+    for key, value in updates.items():
+        os.environ[key] = value
+
+    return env_path
 
 
 def resolve_system_command(action_name):
@@ -499,6 +642,54 @@ def system_api():
         return jsonify(error_message(str(error), status=503)), 503
 
     return jsonify(accepted)
+
+
+@app.get("/api/settings/wifi")
+def wifi_settings_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    settings = read_wifi_settings()
+    return jsonify(
+        {
+            "ok": True,
+            "fallback_mode": "allow-fallback" if settings["allow_fallback"] else "usb-only",
+            "allow_fallback": settings["allow_fallback"],
+            "primary_recovery_grace_seconds": settings["primary_recovery_grace_seconds"],
+        }
+    )
+
+
+@app.post("/api/settings/wifi")
+def update_wifi_settings_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        updates = parse_wifi_settings_payload(payload)
+        env_path = write_env_settings(updates)
+        settings = read_wifi_settings()
+    except ValueError as error:
+        return jsonify(error_message(str(error))), 400
+    except OSError as error:
+        return jsonify(error_message(f"Unable to save Wi-Fi settings: {error}", status=500)), 500
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Wi-Fi failover settings saved. The maintenance timer will pick them up on its next run.",
+            "env_file": env_path,
+            "fallback_mode": "allow-fallback" if settings["allow_fallback"] else "usb-only",
+            "allow_fallback": settings["allow_fallback"],
+            "primary_recovery_grace_seconds": settings["primary_recovery_grace_seconds"],
+        }
+    )
 
 
 @sock.route("/ws")

@@ -8,6 +8,9 @@ USB_IFACE="${SCOREBOARD_WIFI_USB_IFACE:-wlan1}"
 FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-wlan0}"
 USB_ADAPTER_ID="${SCOREBOARD_WIFI_USB_ADAPTER_ID:-0bda:c811}"
 ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-1}"
+PRIMARY_RECOVERY_GRACE_SECONDS="${SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS:-180}"
+STATE_DIR="${SCOREBOARD_WIFI_STATE_DIR:-/run/scoreboard}"
+STATE_FILE="${STATE_DIR}/wifi-failover-primary.state"
 PRIMARY_CONN="scoreboard-${USB_IFACE}"
 FALLBACK_CONN="scoreboard-${FALLBACK_IFACE}"
 
@@ -31,6 +34,8 @@ keys = [
     "SCOREBOARD_WIFI_USB_IFACE",
     "SCOREBOARD_WIFI_FALLBACK_IFACE",
     "SCOREBOARD_WIFI_ALLOW_FALLBACK",
+    "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+    "SCOREBOARD_WIFI_STATE_DIR",
 ]
 values = {key: "" for key in keys}
 
@@ -74,6 +79,41 @@ default_route_uses_iface() {
 
 fallback_enabled() {
   [ "${ALLOW_FALLBACK}" = "1" ]
+}
+
+ensure_state_dir() {
+  mkdir -p "${STATE_DIR}"
+}
+
+clear_primary_failure_state() {
+  rm -f "${STATE_FILE}"
+}
+
+mark_primary_failure_start() {
+  if [ -f "${STATE_FILE}" ]; then
+    return
+  fi
+
+  ensure_state_dir
+  date +%s > "${STATE_FILE}"
+}
+
+primary_failure_started_at() {
+  if [ ! -f "${STATE_FILE}" ]; then
+    return 1
+  fi
+
+  cat "${STATE_FILE}" 2>/dev/null
+}
+
+primary_failure_age() {
+  started_at="$(primary_failure_started_at)" || return 1
+  now="$(date +%s)"
+  age=$((now - started_at))
+  if [ "${age}" -lt 0 ]; then
+    age=0
+  fi
+  printf '%s\n' "${age}"
 }
 
 wait_for_default_route() {
@@ -144,11 +184,13 @@ fi
 
 if adapter_present && have_iface "${USB_IFACE}"; then
   if default_route_uses_iface "${USB_IFACE}"; then
+    clear_primary_failure_state
     keep_fallback_down
     exit 0
   fi
 
   if bring_up_connection "${PRIMARY_CONN}" "${USB_IFACE}" && wait_for_default_route "${USB_IFACE}" 12; then
+    clear_primary_failure_state
     log "Primary Wi-Fi restored on ${USB_IFACE}; disconnecting ${FALLBACK_IFACE}."
     keep_fallback_down
     exit 0
@@ -156,9 +198,23 @@ if adapter_present && have_iface "${USB_IFACE}"; then
 fi
 
 if ! fallback_enabled; then
+  clear_primary_failure_state
   keep_fallback_down
   log "USB Wi-Fi is configured as the only allowed uplink; keeping ${FALLBACK_IFACE} offline while retrying ${USB_IFACE}."
   exit 1
+fi
+
+if adapter_present && have_iface "${USB_IFACE}"; then
+  mark_primary_failure_start
+  failure_age="$(primary_failure_age || printf '0\n')"
+  if [ "${failure_age}" -lt "${PRIMARY_RECOVERY_GRACE_SECONDS}" ]; then
+    remaining=$((PRIMARY_RECOVERY_GRACE_SECONDS - failure_age))
+    keep_fallback_down
+    log "Primary Wi-Fi on ${USB_IFACE} is still within its recovery grace window (${failure_age}s/${PRIMARY_RECOVERY_GRACE_SECONDS}s); keeping ${FALLBACK_IFACE} offline for ${remaining}s more."
+    exit 1
+  fi
+else
+  clear_primary_failure_state
 fi
 
 if have_iface "${FALLBACK_IFACE}" && bring_up_connection "${FALLBACK_CONN}" "${FALLBACK_IFACE}"; then

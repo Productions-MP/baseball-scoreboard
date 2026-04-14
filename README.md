@@ -159,13 +159,14 @@ If you want the installer to move the active Wi-Fi connection from the built-in 
 SCOREBOARD_WIFI_SSID=<your-ssid>
 SCOREBOARD_WIFI_PSK=<your-password>
 SCOREBOARD_WIFI_ALLOW_FALLBACK=0
+SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS=180
 ```
 
 If those values are left blank and NetworkManager already has a saved profile for the current network, the installer will still try to reuse that profile on `wlan1`. The explicit SSID/PSK path is the most reliable option because it also lets the installer persist a dedicated `wlan1` profile.
 
 If your Pi is sealed up somewhere that makes the onboard radio unusable, set `SCOREBOARD_WIFI_ALLOW_FALLBACK=0` before you run the installer. That puts the board in USB-only Wi-Fi mode so the maintenance timer keeps retrying `wlan1` and never intentionally rejoins the network over `wlan0`.
 
-If you want the more forgiving maintenance behavior instead, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`. In that mode the timer keeps preferring and retrying `wlan1`, but if `wlan1` loses the route it will also bring up `wlan0` so you can still get in over the onboard radio. Once `wlan1` recovers, the helper shuts `wlan0` back down.
+If you want the more forgiving maintenance behavior instead, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`. In that mode the timer keeps preferring and retrying `wlan1`, but it now waits out a recovery grace window before it brings up `wlan0`. The default is `180` seconds via `SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS`, which keeps brief `wlan1` drops from constantly waking the onboard radio. Once `wlan1` recovers, the helper shuts `wlan0` back down again.
 
 ### 2. Apply the Pi display boot settings
 
@@ -332,9 +333,16 @@ On install, `scripts/switch-wifi-to-usb.sh` now configures persistent `NetworkMa
 - `scoreboard-wlan1` gets the higher autoconnect priority, lower route metric, and normal autoconnect so boot preference stays with the USB adapter.
 - `scoreboard-wlan0` is saved as a standby profile with autoconnect disabled, so it does not join the network unless `wlan1` fails and the helper explicitly brings it up.
 - If `.env` sets `SCOREBOARD_WIFI_ALLOW_FALLBACK=0`, the helper keeps `wlan0` disconnected and powered down so the Pi stays in USB-only Wi-Fi mode.
-- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi keeps reasserting `wlan1`; when fallback is enabled it also brings up `wlan0` for maintenance access if `wlan1` stops working, then shuts `wlan0` back down after `wlan1` recovers.
+- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi keeps reasserting `wlan1`; when fallback is enabled it only brings up `wlan0` after `wlan1` has stayed unhealthy longer than `SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS`, then shuts `wlan0` back down after `wlan1` recovers.
 - When both radios are up, the route metrics still prefer `wlan1`, so the USB adapter remains the primary uplink.
 - If NetworkManager is not available, the helper still falls back to the explicit `wpa_supplicant` path.
+
+From the browser controller, you can also change these two Wi-Fi failover settings without editing `.env` directly:
+
+- `Admin -> System Controls -> Wi-Fi Fallback`
+- `Admin -> System Controls -> Wi-Fi Recovery Period`
+
+Those menus use the same tap-to-apply picker style as the scoreboard layout selector. There is no separate save button; choosing an option writes it to the active env file and the failover timer usually picks it up within about 20 seconds.
 
 ## Chromium launch behavior
 
@@ -489,7 +497,7 @@ If the Pi is using `wpa_supplicant` instead of NetworkManager, make sure `.env` 
 
 If the onboard radio is physically unusable in your enclosure, add `SCOREBOARD_WIFI_ALLOW_FALLBACK=0` to `.env` and rerun `scripts/install.sh` so the timer stops ever bringing `wlan0` online.
 
-If you want maintenance SSH as a safety net, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`, rerun `scripts/install.sh`, and let the lower `SCOREBOARD_WIFI_FALLBACK_METRIC` keep `wlan1` as the preferred route whenever both links are available. The timer will also drop `wlan0` again once `wlan1` is healthy.
+If you want maintenance SSH as a safety net, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`, rerun `scripts/install.sh`, and let the lower `SCOREBOARD_WIFI_FALLBACK_METRIC` keep `wlan1` as the preferred route whenever both links are available. If `wlan1` is just flapping, raise `SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS` so the timer waits longer before it ever wakes `wlan0`. The timer will still drop `wlan0` again once `wlan1` is healthy.
 
 ### Cursor is still visible
 
@@ -544,8 +552,10 @@ The control page includes:
 
 - `Download backup`
 - `Import backup`
+- `Admin -> System Controls -> Wi-Fi Fallback`
+- `Admin -> System Controls -> Wi-Fi Recovery Period`
 
-That lets you snapshot the current local game state and restore it later.
+The backup actions let you snapshot the current local game state and restore it later. The Wi-Fi menus let you switch between USB-only mode and delayed fallback, plus choose the recovery grace window, directly from the controller.
 
 ## Verification
 

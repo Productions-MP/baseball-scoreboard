@@ -30,6 +30,9 @@
   const previewFrame = document.getElementById("control-preview-iframe");
   const designSelect = document.getElementById("scoreboard-design-select");
   const designOptions = Array.from(document.querySelectorAll("[data-design-option]"));
+  const wifiSettingsNotes = Array.from(document.querySelectorAll("[data-wifi-settings-note]"));
+  const wifiFallbackOptions = Array.from(document.querySelectorAll("[data-wifi-fallback-option]"));
+  const wifiGraceOptions = Array.from(document.querySelectorAll("[data-wifi-grace-option]"));
   const liveInningLabel = document.getElementById("live-inning-label");
   const ballValue = document.getElementById("ball-value");
   const strikeValue = document.getElementById("strike-value");
@@ -51,6 +54,8 @@
     design: { title: "Design", element: document.getElementById("menu-level-design") },
     backup: { title: "Backup / Reset", element: document.getElementById("menu-level-backup") },
     system: { title: "System Controls", element: document.getElementById("menu-level-system") },
+    "wifi-fallback": { title: "Wi-Fi Fallback", element: document.getElementById("menu-level-wifi-fallback") },
+    "wifi-grace": { title: "Wi-Fi Recovery Period", element: document.getElementById("menu-level-wifi-grace") },
   };
 
   let state = config.initialState ? core.serializeState(config.initialState) : core.cloneDefaultState();
@@ -65,6 +70,12 @@
   let activeMenuLevel = "main";
   let menuHistory = [];
   let powerConfirmTimeoutId = 0;
+  let wifiSettingsBusy = false;
+  let wifiSettings = {
+    fallback_mode: "allow-fallback",
+    primary_recovery_grace_seconds: 180,
+  };
+  let wifiSettingsRequestId = 0;
 
   function formatDesignLabel(design) {
     return design.label + " (" + design.width + "x" + design.height + ")";
@@ -73,6 +84,13 @@
   function setStatusMessage(message, isError) {
     saveNote.textContent = message;
     saveNote.classList.toggle("is-error", Boolean(isError));
+  }
+
+  function setWifiFailoverMessage(message, isError) {
+    wifiSettingsNotes.forEach(function updateWifiSettingsNote(note) {
+      note.textContent = message;
+      note.classList.toggle("is-error", Boolean(isError));
+    });
   }
 
   function setConnectionState(label, isOffline) {
@@ -155,6 +173,22 @@
     element.hidden = !isVisible;
   }
 
+  function toggleWifiSettingsBusy(isBusy, busyLabel) {
+    wifiSettingsBusy = Boolean(isBusy);
+    const disabled = wifiSettingsBusy;
+    const title = wifiSettingsBusy && busyLabel ? busyLabel : "";
+
+    wifiFallbackOptions.forEach(function toggleWifiFallbackOption(option) {
+      option.disabled = disabled;
+      option.title = title;
+    });
+
+    wifiGraceOptions.forEach(function toggleWifiGraceOption(option) {
+      option.disabled = disabled;
+      option.title = title;
+    });
+  }
+
   function cancelPowerConfirm() {
     if (powerConfirmTimeoutId) {
       window.clearTimeout(powerConfirmTimeoutId);
@@ -189,6 +223,10 @@
 
     if (menuPanelBody) {
       menuPanelBody.scrollTop = 0;
+    }
+
+    if (levelKey === "wifi-fallback" || levelKey === "wifi-grace") {
+      loadWifiSettingsIntoMenu();
     }
   }
 
@@ -269,6 +307,138 @@
         controlKeyInput.focus();
       });
     }
+  }
+
+  function applyWifiSettings(settings) {
+    if (!settings) {
+      return;
+    }
+
+    wifiSettings = {
+      fallback_mode: settings.fallback_mode === "usb-only" ? "usb-only" : "allow-fallback",
+      primary_recovery_grace_seconds: Math.max(0, Number.parseInt(settings.primary_recovery_grace_seconds, 10) || 0),
+    };
+    syncWifiSettingsSelection();
+  }
+
+  function syncWifiSettingsSelection() {
+    wifiFallbackOptions.forEach(function syncFallbackOption(option) {
+      const isSelected = option.dataset.value === wifiSettings.fallback_mode;
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-pressed", String(isSelected));
+
+      const status = option.querySelector("[data-wifi-fallback-status]");
+
+      if (status) {
+        status.hidden = !isSelected;
+      }
+    });
+
+    wifiGraceOptions.forEach(function syncGraceOption(option) {
+      const isSelected = Number.parseInt(option.dataset.value, 10) === wifiSettings.primary_recovery_grace_seconds;
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-pressed", String(isSelected));
+
+      const status = option.querySelector("[data-wifi-grace-status]");
+
+      if (status) {
+        status.hidden = !isSelected;
+      }
+    });
+  }
+
+  async function loadWifiSettingsIntoMenu() {
+    const requestId = ++wifiSettingsRequestId;
+    setWifiFailoverMessage(
+      "Loading current Wi-Fi failover settings...",
+      false
+    );
+    toggleWifiSettingsBusy(true, "Loading...");
+
+    try {
+      const payload = await core.fetchWifiSettings();
+      if (requestId !== wifiSettingsRequestId) {
+        return;
+      }
+      applyWifiSettings(payload);
+      setWifiFailoverMessage("", false);
+    } catch (error) {
+      if (requestId !== wifiSettingsRequestId) {
+        return;
+      }
+      if (error.status === 401) {
+        handleControlKeyRejected("Wi-Fi settings");
+      } else {
+        setWifiFailoverMessage("Unable to load Wi-Fi failover settings: " + error.message, true);
+      }
+    } finally {
+      toggleWifiSettingsBusy(false);
+    }
+  }
+
+  async function saveWifiFailoverSettings(nextSettings) {
+    if (config.requireKey && !core.getControlKey()) {
+      authDismissed = false;
+      render();
+      setWifiFailoverMessage("Enter the control password to change Wi-Fi failover settings.", true);
+      return;
+    }
+
+    const payloadToSave = {
+      fallback_mode: nextSettings.fallback_mode || wifiSettings.fallback_mode,
+      primary_recovery_grace_seconds: Math.max(
+        0,
+        Number.parseInt(
+          nextSettings.primary_recovery_grace_seconds,
+          10
+        ) || wifiSettings.primary_recovery_grace_seconds
+      ),
+    };
+
+    toggleWifiSettingsBusy(true, "Applying...");
+    setWifiFailoverMessage("Applying Wi-Fi failover change...", false);
+
+    try {
+      const payload = await core.updateWifiSettings(payloadToSave);
+      applyWifiSettings(payload);
+      setWifiFailoverMessage(
+        payload.message || "Wi-Fi failover settings saved.",
+        false
+      );
+      setStatusMessage("Wi-Fi failover settings saved.", false);
+    } catch (error) {
+      if (error.status === 401) {
+        handleControlKeyRejected("Wi-Fi settings");
+      } else {
+        setWifiFailoverMessage("Unable to save Wi-Fi failover settings: " + error.message, true);
+      }
+    } finally {
+      toggleWifiSettingsBusy(false);
+    }
+  }
+
+  function commitWifiFallbackSelection(value) {
+    if (!value || wifiSettingsBusy || value === wifiSettings.fallback_mode) {
+      return;
+    }
+
+    saveWifiFailoverSettings({
+      fallback_mode: value,
+      primary_recovery_grace_seconds: wifiSettings.primary_recovery_grace_seconds,
+    });
+  }
+
+  function commitWifiGraceSelection(value) {
+    const graceSeconds = Math.max(0, Number.parseInt(value, 10) || 0);
+
+    if (wifiSettingsBusy || graceSeconds === wifiSettings.primary_recovery_grace_seconds) {
+      return;
+    }
+
+    saveWifiFailoverSettings({
+      fallback_mode: wifiSettings.fallback_mode,
+      primary_recovery_grace_seconds: graceSeconds,
+    });
   }
 
   function updateSummary() {
@@ -832,6 +1002,76 @@
       if (event.key === "ArrowUp") {
         event.preventDefault();
         designOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
+  });
+
+  wifiFallbackOptions.forEach(function bindWifiFallbackOption(option, index) {
+    option.addEventListener("click", function onWifiFallbackClick() {
+      commitWifiFallbackSelection(option.dataset.value);
+    });
+
+    option.addEventListener("keydown", function onWifiFallbackKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitWifiFallbackSelection(option.dataset.value);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        wifiFallbackOptions[Math.min(index + 1, wifiFallbackOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        wifiFallbackOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
+  });
+
+  wifiGraceOptions.forEach(function bindWifiGraceOption(option, index) {
+    option.addEventListener("click", function onWifiGraceClick() {
+      commitWifiGraceSelection(option.dataset.value);
+    });
+
+    option.addEventListener("keydown", function onWifiGraceKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitWifiGraceSelection(option.dataset.value);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        wifiGraceOptions[Math.min(index + 1, wifiGraceOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        wifiGraceOptions[Math.max(index - 1, 0)].focus();
       }
     });
   });
