@@ -172,6 +172,34 @@
     };
   }
 
+  function getIdleStatus(state, settings, nowMs) {
+    const source = state || {};
+    const idleSettings = settings || {};
+    const updatedAt = source.updated_at ? Date.parse(source.updated_at) : NaN;
+    const lastActivityAt = Number.isFinite(updatedAt) ? updatedAt : Date.now();
+    const currentTimeMs = Number.isFinite(nowMs) ? nowMs : Date.now();
+    const idleMs = Math.max(0, currentTimeMs - lastActivityAt);
+    const screensaverIdleSeconds = Math.max(0, toInt(idleSettings.screensaver_idle_seconds, 0));
+    const blackoutIdleSeconds = Math.max(0, toInt(idleSettings.blackout_idle_seconds, 0));
+    const manualBlackout = normalizeBoolean(source.blackout, false);
+    const idleBlackout = blackoutIdleSeconds > 0 && idleMs >= blackoutIdleSeconds * 1000;
+    const blackout = manualBlackout || idleBlackout;
+    const screensaver =
+      screensaverIdleSeconds > 0 &&
+      idleMs >= screensaverIdleSeconds * 1000 &&
+      !blackout;
+
+    return {
+      updated_at: source.updated_at || null,
+      last_activity_at: Number.isFinite(updatedAt) ? new Date(lastActivityAt).toISOString() : null,
+      idle_ms: idleMs,
+      screensaver: screensaver,
+      blackout: blackout,
+      manual_blackout: manualBlackout,
+      idle_blackout: idleBlackout,
+    };
+  }
+
   function formatTimestamp(value) {
     if (!value) {
       return "Not saved yet";
@@ -292,6 +320,27 @@
       {
         method: "POST",
         body: JSON.stringify({ action: action }),
+      },
+      true
+    );
+  }
+
+  function fetchDisplayIdleSettings() {
+    return requestJson(
+      getConfig().endpoints.getDisplayIdleSettings,
+      {
+        method: "GET",
+      },
+      true
+    );
+  }
+
+  function updateDisplayIdleSettings(settings) {
+    return requestJson(
+      getConfig().endpoints.updateDisplayIdleSettings,
+      {
+        method: "POST",
+        body: JSON.stringify(settings || {}),
       },
       true
     );
@@ -454,13 +503,16 @@
     getControlKey: getControlKey,
     getDesignById: getDesignById,
     getScoreboardDesigns: getScoreboardDesigns,
+    fetchDisplayIdleSettings: fetchDisplayIdleSettings,
     fetchWifiSettings: fetchWifiSettings,
     resetState: resetState,
     runSystemAction: runSystemAction,
     serializeState: serializeState,
     setControlKey: setControlKey,
+    updateDisplayIdleSettings: updateDisplayIdleSettings,
     updateWifiSettings: updateWifiSettings,
     updateState: updateState,
+    getIdleStatus: getIdleStatus,
     withDerived: withDerived,
   };
 })();

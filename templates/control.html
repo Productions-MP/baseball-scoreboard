@@ -234,6 +234,14 @@
               <span class="menu-nav-item-label">Wi-Fi Recovery Period</span>
               <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
             </button>
+            <button class="menu-nav-item" type="button" data-navigate-menu="display-idle">
+              <span class="menu-nav-item-label">Logo Idle Timeout</span>
+              <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
+            <button class="menu-nav-item" type="button" data-navigate-menu="display-blackout">
+              <span class="menu-nav-item-label">Blackout Timeout</span>
+              <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
             <button class="menu-nav-item" type="button" id="restart-system-button">
               <span class="menu-nav-item-label">Restart Application</span>
             </button>
@@ -372,6 +380,170 @@
               </span>
             </button>
           </div>
+
+          <div class="menu-level" id="menu-level-display-idle" hidden>
+            <p class="inline-note" id="display-idle-note" data-display-idle-settings-note></p>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-idle-option
+              data-value="0"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">Off</span>
+                <span class="menu-nav-item-meta">Never show the logo idle screen.</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-idle-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-idle-option
+              data-value="300"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">5 minutes</span>
+                <span class="menu-nav-item-meta">300 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-idle-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-idle-option
+              data-value="600"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">10 minutes</span>
+                <span class="menu-nav-item-meta">600 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-idle-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-idle-option
+              data-value="900"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">15 minutes</span>
+                <span class="menu-nav-item-meta">900 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-idle-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-idle-option
+              data-value="1200"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">20 minutes</span>
+                <span class="menu-nav-item-meta">1200 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-idle-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-idle-option
+              data-value="1800"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">30 minutes</span>
+                <span class="menu-nav-item-meta">1800 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-idle-status hidden>Active</span>
+            </button>
+          </div>
+
+          <div class="menu-level" id="menu-level-display-blackout" hidden>
+            <p class="inline-note" id="display-blackout-note" data-display-idle-settings-note></p>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-blackout-option
+              data-value="0"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">Off</span>
+                <span class="menu-nav-item-meta">Never force blackout from display idle.</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-blackout-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-blackout-option
+              data-value="900"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">15 minutes</span>
+                <span class="menu-nav-item-meta">900 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-blackout-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-blackout-option
+              data-value="1800"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">30 minutes</span>
+                <span class="menu-nav-item-meta">1800 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-blackout-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-blackout-option
+              data-value="2700"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">45 minutes</span>
+                <span class="menu-nav-item-meta">2700 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-blackout-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-blackout-option
+              data-value="3600"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">60 minutes</span>
+                <span class="menu-nav-item-meta">3600 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-blackout-status hidden>Active</span>
+            </button>
+            <button
+              type="button"
+              class="menu-nav-item menu-nav-item-detail"
+              data-display-blackout-option
+              data-value="5400"
+              aria-pressed="false"
+            >
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">90 minutes</span>
+                <span class="menu-nav-item-meta">5400 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-display-blackout-status hidden>Active</span>
+            </button>
+          </div>
         </div>
       </nav>
     </section>
@@ -403,6 +575,8 @@
           updateState: "/api/state",
           resetState: "/api/reset",
           systemAction: "/api/system",
+          getDisplayIdleSettings: "/api/settings/display-idle",
+          updateDisplayIdleSettings: "/api/settings/display-idle",
           getWifiSettings: "/api/settings/wifi",
           updateWifiSettings: "/api/settings/wifi",
           websocket: "/ws"

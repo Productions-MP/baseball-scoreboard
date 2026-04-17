@@ -7,7 +7,10 @@
   const config = core.getConfig();
   const activeDesign = core.getActiveDesign();
   const frame = document.getElementById("display-frame");
+  const screensaver = document.getElementById("display-screensaver");
   const heartbeatLed = document.getElementById("heartbeat-led");
+  let screensaverIdleMs = Math.max(0, Number(config.screensaverIdleSeconds || 0)) * 1000;
+  let blackoutIdleMs = Math.max(0, Number(config.blackoutIdleSeconds || 0)) * 1000;
   let realtime = null;
   let latestState = null;
   let reloadingForDesignChange = false;
@@ -49,6 +52,52 @@
       frame.hidden = blackoutEnabled;
       frame.setAttribute("aria-hidden", blackoutEnabled ? "true" : "false");
     }
+  }
+
+  function setScreensaverVisible(isVisible) {
+    const screensaverEnabled = Boolean(isVisible);
+
+    document.body.classList.toggle("is-screensaver", screensaverEnabled);
+
+    if (screensaver) {
+      screensaver.hidden = !screensaverEnabled;
+      screensaver.setAttribute("aria-hidden", screensaverEnabled ? "false" : "true");
+    }
+  }
+
+  function getLastActivityTime() {
+    const updatedAt = latestState && latestState.updated_at ? latestState.updated_at : null;
+    const stateTimestamp = updatedAt ? Date.parse(updatedAt) : NaN;
+
+    if (Number.isFinite(stateTimestamp)) {
+      return stateTimestamp;
+    }
+
+    return Date.now();
+  }
+
+  function updateIdleThresholds(payload) {
+    const nextScreensaver = Number(payload && payload.screensaver_idle_seconds);
+    const nextBlackout = Number(payload && payload.blackout_idle_seconds);
+
+    if (Number.isFinite(nextScreensaver)) {
+      screensaverIdleMs = Math.max(0, nextScreensaver) * 1000;
+    }
+
+    if (Number.isFinite(nextBlackout)) {
+      blackoutIdleMs = Math.max(0, nextBlackout) * 1000;
+    }
+  }
+
+  function updateIdlePresentation() {
+    const state = latestState || core.withDerived(config.initialState || {});
+    const idleStatus = core.getIdleStatus(state, {
+      screensaver_idle_seconds: Math.round(screensaverIdleMs / 1000),
+      blackout_idle_seconds: Math.round(blackoutIdleMs / 1000),
+    });
+
+    setScreensaverVisible(idleStatus.screensaver);
+    setBlackout(idleStatus.blackout);
   }
 
   function reloadForDesignChange() {
@@ -347,8 +396,9 @@
       return;
     }
 
+    updateIdleThresholds(payload || {});
     latestState = state;
-    setBlackout(state.blackout);
+    updateIdlePresentation();
     renderer.render(state);
   }
 
@@ -396,6 +446,7 @@
   if (config.initialState) {
     render(config.initialState);
   }
+  window.setInterval(updateIdlePresentation, 10000);
   refresh();
   connectRealtime();
 })();

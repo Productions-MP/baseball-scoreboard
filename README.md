@@ -375,6 +375,23 @@ The display service targets:
 http://127.0.0.1:5050/display
 ```
 
+By default, the display also has an idle safety flow based on the last saved scoreboard update:
+
+- after 10 minutes, it swaps to a black screensaver with the baseball logo centered
+- after 30 minutes, it goes fully black via blackout mode
+
+You can tune those thresholds in `.env` with:
+
+```text
+SCOREBOARD_SCREENSAVER_IDLE_SECONDS=900
+SCOREBOARD_BLACKOUT_IDLE_SECONDS=1800
+```
+
+Or from the controller menu:
+
+- `Admin -> System Controls -> Logo Idle Timeout`
+- `Admin -> System Controls -> Blackout Timeout`
+
 To relaunch the kiosk session:
 
 ```bash

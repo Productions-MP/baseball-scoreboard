@@ -45,6 +45,10 @@ WIFI_SETTING_DEFAULTS = {
     "SCOREBOARD_WIFI_ALLOW_FALLBACK": "1",
     "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": "180",
 }
+DISPLAY_IDLE_SETTING_DEFAULTS = {
+    "SCOREBOARD_SCREENSAVER_IDLE_SECONDS": "900",
+    "SCOREBOARD_BLACKOUT_IDLE_SECONDS": "1800",
+}
 
 def load_env_file(path):
     if not os.path.exists(path):
@@ -72,6 +76,15 @@ def env_value(primary_name, legacy_name=None, default=""):
     return value
 
 
+def int_env_value(primary_name, legacy_name=None, default=0):
+    raw_value = env_value(primary_name, legacy_name, str(default))
+
+    try:
+        return int(str(raw_value).strip())
+    except (TypeError, ValueError):
+        return int(default)
+
+
 def strip_wrapping_quotes(value):
     text = str(value or "").strip()
 
@@ -93,7 +106,7 @@ STATE_FILE = env_value(
     LEGACY_STATE_FILE if os.path.exists(LEGACY_STATE_FILE) and not os.path.exists(DEFAULT_STATE_FILE) else DEFAULT_STATE_FILE,
 )
 SCOREBOARD_HOST = env_value("SCOREBOARD_HOST", "FALLBACK_HOST", "0.0.0.0")
-SCOREBOARD_PORT = int(env_value("SCOREBOARD_PORT", "FALLBACK_PORT", "5050"))
+SCOREBOARD_PORT = int_env_value("SCOREBOARD_PORT", "FALLBACK_PORT", 5050)
 SCHOOL_NAME = env_value("SCHOOL_NAME", default="Highlands Latin School")
 
 app = Flask(__name__)
@@ -103,9 +116,17 @@ sock = Sock(app)
 def stamp_state(state):
     return {
         **normalize_state(state),
-        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "updated_at": isoformat_utc(now_utc()),
         "source": MODE_NAME,
     }
+
+
+def now_utc():
+    return datetime.now(timezone.utc)
+
+
+def isoformat_utc(value):
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def atomic_write_state(payload):
@@ -176,10 +197,13 @@ def require_control_key():
 
 
 def api_payload(state):
+    display_idle_settings = read_display_idle_settings()
     return {
         "ok": True,
         "mode": MODE_NAME,
         "updated_at": state.get("updated_at"),
+        "screensaver_idle_seconds": display_idle_settings["screensaver_idle_seconds"],
+        "blackout_idle_seconds": display_idle_settings["blackout_idle_seconds"],
         "state": with_derived(state, default_source=MODE_NAME),
     }
 
@@ -328,6 +352,45 @@ def read_wifi_settings():
     }
 
 
+def read_display_idle_settings():
+    env_path = resolve_env_file_path()
+    assignments = read_env_assignments(env_path)
+    screensaver_raw = assignments.get(
+        "SCOREBOARD_SCREENSAVER_IDLE_SECONDS",
+        os.environ.get(
+            "SCOREBOARD_SCREENSAVER_IDLE_SECONDS",
+            DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_SCREENSAVER_IDLE_SECONDS"],
+        ),
+    )
+    blackout_raw = assignments.get(
+        "SCOREBOARD_BLACKOUT_IDLE_SECONDS",
+        os.environ.get(
+            "SCOREBOARD_BLACKOUT_IDLE_SECONDS",
+            DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_BLACKOUT_IDLE_SECONDS"],
+        ),
+    )
+
+    try:
+        screensaver_seconds = int(
+            str(screensaver_raw).strip() or DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_SCREENSAVER_IDLE_SECONDS"]
+        )
+    except ValueError:
+        screensaver_seconds = int(DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_SCREENSAVER_IDLE_SECONDS"])
+
+    try:
+        blackout_seconds = int(
+            str(blackout_raw).strip() or DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_BLACKOUT_IDLE_SECONDS"]
+        )
+    except ValueError:
+        blackout_seconds = int(DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_BLACKOUT_IDLE_SECONDS"])
+
+    return {
+        "env_file": env_path,
+        "screensaver_idle_seconds": max(0, screensaver_seconds),
+        "blackout_idle_seconds": max(0, blackout_seconds),
+    }
+
+
 def parse_wifi_settings_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("Wi-Fi settings payload must be a JSON object.")
@@ -353,6 +416,28 @@ def parse_wifi_settings_payload(payload):
     return {
         "SCOREBOARD_WIFI_ALLOW_FALLBACK": "1" if fallback_mode == "allow-fallback" else "0",
         "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": str(grace_seconds),
+    }
+
+
+def parse_display_idle_settings_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("Display idle settings payload must be a JSON object.")
+
+    try:
+        screensaver_seconds = int(payload.get("screensaver_idle_seconds", 0))
+        blackout_seconds = int(payload.get("blackout_idle_seconds", 0))
+    except (TypeError, ValueError):
+        raise ValueError("Display idle settings must be whole numbers of seconds.")
+
+    if screensaver_seconds < 0 or blackout_seconds < 0:
+        raise ValueError("Display idle settings cannot be negative.")
+
+    if screensaver_seconds > 86400 or blackout_seconds > 86400:
+        raise ValueError("Display idle settings must be 86400 seconds or less.")
+
+    return {
+        "SCOREBOARD_SCREENSAVER_IDLE_SECONDS": str(screensaver_seconds),
+        "SCOREBOARD_BLACKOUT_IDLE_SECONDS": str(blackout_seconds),
     }
 
 
@@ -526,6 +611,7 @@ def root():
 def display():
     current_state = read_state()
     active_design = get_scoreboard_design(current_state.get("design_id"))
+    display_idle_settings = read_display_idle_settings()
     return render_template(
         "display.html",
         school_name=SCHOOL_NAME,
@@ -534,6 +620,8 @@ def display():
         active_design=active_design,
         display_template=active_design["template"],
         initial_state=with_derived(current_state, default_source=MODE_NAME),
+        screensaver_idle_seconds=display_idle_settings["screensaver_idle_seconds"],
+        blackout_idle_seconds=display_idle_settings["blackout_idle_seconds"],
     )
 
 
@@ -688,6 +776,54 @@ def update_wifi_settings_api():
             "fallback_mode": "allow-fallback" if settings["allow_fallback"] else "usb-only",
             "allow_fallback": settings["allow_fallback"],
             "primary_recovery_grace_seconds": settings["primary_recovery_grace_seconds"],
+        }
+    )
+
+
+@app.get("/api/settings/display-idle")
+def display_idle_settings_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    settings = read_display_idle_settings()
+    return jsonify(
+        {
+            "ok": True,
+            "screensaver_idle_seconds": settings["screensaver_idle_seconds"],
+            "blackout_idle_seconds": settings["blackout_idle_seconds"],
+        }
+    )
+
+
+@app.post("/api/settings/display-idle")
+def update_display_idle_settings_api():
+    auth_error = require_control_key()
+
+    if auth_error:
+        return auth_error
+
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        updates = parse_display_idle_settings_payload(payload)
+        env_path = write_env_settings(updates)
+        settings = read_display_idle_settings()
+    except ValueError as error:
+        return jsonify(error_message(str(error))), 400
+    except OSError as error:
+        return jsonify(error_message(f"Unable to save display idle settings: {error}", status=500)), 500
+
+    broadcast_state(read_state())
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Display idle settings saved.",
+            "env_file": env_path,
+            "screensaver_idle_seconds": settings["screensaver_idle_seconds"],
+            "blackout_idle_seconds": settings["blackout_idle_seconds"],
         }
     )
 

@@ -33,6 +33,9 @@
   const wifiSettingsNotes = Array.from(document.querySelectorAll("[data-wifi-settings-note]"));
   const wifiFallbackOptions = Array.from(document.querySelectorAll("[data-wifi-fallback-option]"));
   const wifiGraceOptions = Array.from(document.querySelectorAll("[data-wifi-grace-option]"));
+  const displayIdleSettingsNotes = Array.from(document.querySelectorAll("[data-display-idle-settings-note]"));
+  const displayIdleOptions = Array.from(document.querySelectorAll("[data-display-idle-option]"));
+  const displayBlackoutOptions = Array.from(document.querySelectorAll("[data-display-blackout-option]"));
   const liveInningLabel = document.getElementById("live-inning-label");
   const ballValue = document.getElementById("ball-value");
   const strikeValue = document.getElementById("strike-value");
@@ -56,9 +59,13 @@
     system: { title: "System Controls", element: document.getElementById("menu-level-system") },
     "wifi-fallback": { title: "Wi-Fi Fallback", element: document.getElementById("menu-level-wifi-fallback") },
     "wifi-grace": { title: "Wi-Fi Recovery Period", element: document.getElementById("menu-level-wifi-grace") },
+    "display-idle": { title: "Logo Idle Timeout", element: document.getElementById("menu-level-display-idle") },
+    "display-blackout": { title: "Blackout Timeout", element: document.getElementById("menu-level-display-blackout") },
   };
 
-  let state = config.initialState ? core.serializeState(config.initialState) : core.cloneDefaultState();
+  let state = config.initialState
+    ? { ...core.serializeState(config.initialState), updated_at: config.initialState.updated_at || null }
+    : { ...core.cloneDefaultState(), updated_at: null };
   let saveInFlight = false;
   let pendingRequestId = "";
   let pendingActionType = "";
@@ -76,6 +83,11 @@
     primary_recovery_grace_seconds: 180,
   };
   let wifiSettingsRequestId = 0;
+  let displayIdleSettings = {
+    screensaver_idle_seconds: 900,
+    blackout_idle_seconds: 1800,
+  };
+  let displayIdleSettingsRequestId = 0;
 
   function formatDesignLabel(design) {
     return design.label + " (" + design.width + "x" + design.height + ")";
@@ -88,6 +100,13 @@
 
   function setWifiFailoverMessage(message, isError) {
     wifiSettingsNotes.forEach(function updateWifiSettingsNote(note) {
+      note.textContent = message;
+      note.classList.toggle("is-error", Boolean(isError));
+    });
+  }
+
+  function setDisplayIdleMessage(message, isError) {
+    displayIdleSettingsNotes.forEach(function updateDisplayIdleSettingsNote(note) {
       note.textContent = message;
       note.classList.toggle("is-error", Boolean(isError));
     });
@@ -114,6 +133,10 @@
 
   function snapshotState() {
     return core.serializeState(state);
+  }
+
+  function idleStatusForState(snapshot) {
+    return core.getIdleStatus(snapshot || state, displayIdleSettings);
   }
 
   function sameState(left, right) {
@@ -145,7 +168,13 @@
   function applyLocalState(nextState, options) {
     const settings = options || {};
     const previousState = snapshotState();
-    const normalizedNext = core.serializeState(nextState);
+    const normalizedNext = {
+      ...core.serializeState(nextState),
+      updated_at:
+        settings.updatedAt !== undefined
+          ? settings.updatedAt
+          : (nextState && nextState.updated_at) || state.updated_at || null,
+    };
 
     if (sameState(previousState, normalizedNext)) {
       return;
@@ -184,6 +213,21 @@
     });
 
     wifiGraceOptions.forEach(function toggleWifiGraceOption(option) {
+      option.disabled = disabled;
+      option.title = title;
+    });
+  }
+
+  function toggleDisplayIdleSettingsBusy(isBusy, busyLabel) {
+    const disabled = Boolean(isBusy);
+    const title = disabled && busyLabel ? busyLabel : "";
+
+    displayIdleOptions.forEach(function toggleDisplayIdleOption(option) {
+      option.disabled = disabled;
+      option.title = title;
+    });
+
+    displayBlackoutOptions.forEach(function toggleDisplayBlackoutOption(option) {
       option.disabled = disabled;
       option.title = title;
     });
@@ -228,6 +272,10 @@
     if (levelKey === "wifi-fallback" || levelKey === "wifi-grace") {
       loadWifiSettingsIntoMenu();
     }
+
+    if (levelKey === "display-idle" || levelKey === "display-blackout") {
+      loadDisplayIdleSettingsIntoMenu();
+    }
   }
 
   function navigateMenuForward(levelKey) {
@@ -265,7 +313,9 @@
   }
 
   function handlePowerClick() {
-    const blackoutEnabled = Boolean(core.withDerived(state).blackout);
+    const idleStatus = idleStatusForState(state);
+    const blackoutEnabled = idleStatus.blackout;
+    const manualBlackout = Boolean(state.blackout);
 
     if (!blackoutEnabled && powerButton && !powerButton.classList.contains("is-confirming")) {
       cancelPowerConfirm();
@@ -279,6 +329,13 @@
     }
 
     cancelPowerConfirm();
+
+    if (idleStatus.idle_blackout && !manualBlackout) {
+      closeMenuPanel();
+      saveState();
+      return;
+    }
+
     handleAction("toggle-blackout");
   }
 
@@ -384,15 +441,12 @@
       return;
     }
 
+    const nextGraceSeconds = Number.parseInt(nextSettings.primary_recovery_grace_seconds, 10);
     const payloadToSave = {
       fallback_mode: nextSettings.fallback_mode || wifiSettings.fallback_mode,
-      primary_recovery_grace_seconds: Math.max(
-        0,
-        Number.parseInt(
-          nextSettings.primary_recovery_grace_seconds,
-          10
-        ) || wifiSettings.primary_recovery_grace_seconds
-      ),
+      primary_recovery_grace_seconds: Number.isFinite(nextGraceSeconds)
+        ? Math.max(0, nextGraceSeconds)
+        : wifiSettings.primary_recovery_grace_seconds,
     };
 
     toggleWifiSettingsBusy(true, "Applying...");
@@ -441,6 +495,148 @@
     });
   }
 
+  function applyDisplayIdleSettings(settings) {
+    if (!settings) {
+      return;
+    }
+
+    displayIdleSettings = {
+      screensaver_idle_seconds: Math.max(0, Number.parseInt(settings.screensaver_idle_seconds, 10) || 0),
+      blackout_idle_seconds: Math.max(0, Number.parseInt(settings.blackout_idle_seconds, 10) || 0),
+    };
+    syncDisplayIdleSelection();
+    syncPowerButton();
+  }
+
+  function syncDisplayIdleSelection() {
+    displayIdleOptions.forEach(function syncDisplayIdleOption(option) {
+      const isSelected = Number.parseInt(option.dataset.value, 10) === displayIdleSettings.screensaver_idle_seconds;
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-pressed", String(isSelected));
+
+      const status = option.querySelector("[data-display-idle-status]");
+
+      if (status) {
+        status.hidden = !isSelected;
+      }
+    });
+
+    displayBlackoutOptions.forEach(function syncDisplayBlackoutOption(option) {
+      const isSelected = Number.parseInt(option.dataset.value, 10) === displayIdleSettings.blackout_idle_seconds;
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-pressed", String(isSelected));
+
+      const status = option.querySelector("[data-display-blackout-status]");
+
+      if (status) {
+        status.hidden = !isSelected;
+      }
+    });
+  }
+
+  async function loadDisplayIdleSettingsIntoMenu() {
+    const requestId = ++displayIdleSettingsRequestId;
+    setDisplayIdleMessage("Loading display idle settings...", false);
+    toggleDisplayIdleSettingsBusy(true, "Loading...");
+
+    try {
+      const payload = await core.fetchDisplayIdleSettings();
+      if (requestId !== displayIdleSettingsRequestId) {
+        return;
+      }
+      applyDisplayIdleSettings(payload);
+      setDisplayIdleMessage("", false);
+    } catch (error) {
+      if (requestId !== displayIdleSettingsRequestId) {
+        return;
+      }
+      if (error.status === 401) {
+        handleControlKeyRejected("Display idle settings");
+      } else {
+        setDisplayIdleMessage("Unable to load display idle settings: " + error.message, true);
+      }
+    } finally {
+      toggleDisplayIdleSettingsBusy(false);
+    }
+  }
+
+  async function refreshDisplayIdleSettingsSilently() {
+    if (config.requireKey && !core.getControlKey()) {
+      return;
+    }
+
+    try {
+      const payload = await core.fetchDisplayIdleSettings();
+      applyDisplayIdleSettings(payload);
+    } catch (error) {
+      return;
+    }
+  }
+
+  async function saveDisplayIdleSettings(nextSettings) {
+    if (config.requireKey && !core.getControlKey()) {
+      authDismissed = false;
+      render();
+      setDisplayIdleMessage("Enter the control password to change display idle settings.", true);
+      return;
+    }
+
+    const nextScreensaverSeconds = Number.parseInt(nextSettings.screensaver_idle_seconds, 10);
+    const nextBlackoutSeconds = Number.parseInt(nextSettings.blackout_idle_seconds, 10);
+    const payloadToSave = {
+      screensaver_idle_seconds: Number.isFinite(nextScreensaverSeconds)
+        ? Math.max(0, nextScreensaverSeconds)
+        : displayIdleSettings.screensaver_idle_seconds,
+      blackout_idle_seconds: Number.isFinite(nextBlackoutSeconds)
+        ? Math.max(0, nextBlackoutSeconds)
+        : displayIdleSettings.blackout_idle_seconds,
+    };
+
+    toggleDisplayIdleSettingsBusy(true, "Applying...");
+    setDisplayIdleMessage("Applying display idle change...", false);
+
+    try {
+      const payload = await core.updateDisplayIdleSettings(payloadToSave);
+      applyDisplayIdleSettings(payload);
+      setDisplayIdleMessage(payload.message || "Display idle settings saved.", false);
+      setStatusMessage("Display idle settings saved.", false);
+    } catch (error) {
+      if (error.status === 401) {
+        handleControlKeyRejected("Display idle settings");
+      } else {
+        setDisplayIdleMessage("Unable to save display idle settings: " + error.message, true);
+      }
+    } finally {
+      toggleDisplayIdleSettingsBusy(false);
+    }
+  }
+
+  function commitDisplayIdleSelection(value) {
+    const seconds = Math.max(0, Number.parseInt(value, 10) || 0);
+
+    if (seconds === displayIdleSettings.screensaver_idle_seconds) {
+      return;
+    }
+
+    saveDisplayIdleSettings({
+      screensaver_idle_seconds: seconds,
+      blackout_idle_seconds: displayIdleSettings.blackout_idle_seconds,
+    });
+  }
+
+  function commitDisplayBlackoutSelection(value) {
+    const seconds = Math.max(0, Number.parseInt(value, 10) || 0);
+
+    if (seconds === displayIdleSettings.blackout_idle_seconds) {
+      return;
+    }
+
+    saveDisplayIdleSettings({
+      screensaver_idle_seconds: displayIdleSettings.screensaver_idle_seconds,
+      blackout_idle_seconds: seconds,
+    });
+  }
+
   function updateSummary() {
     const derived = core.withDerived(state);
     const guestBatting = derived.half !== "bottom";
@@ -464,7 +660,7 @@
       return;
     }
 
-    const blackoutEnabled = Boolean(core.withDerived(state).blackout);
+    const blackoutEnabled = idleStatusForState(state).blackout;
     const isOn = !blackoutEnabled;
     const isConfirming = powerButton.classList.contains("is-confirming");
 
@@ -539,9 +735,16 @@
   }
 
   function replaceState(nextState, options) {
-    state = core.serializeState(nextState);
+    const settings = options || {};
+    state = {
+      ...core.serializeState(nextState),
+      updated_at:
+        settings.updatedAt !== undefined
+          ? settings.updatedAt
+          : (nextState && nextState.updated_at) || state.updated_at || null,
+    };
 
-    if (!options || !options.preserveHistory) {
+    if (!settings.preserveHistory) {
       clearHistory();
     }
 
@@ -597,8 +800,10 @@
     const payload = await core.updateState(snapshot);
     pendingRequestId = "";
     pendingActionType = "";
-    state = core.serializeState(payload.state);
-    render();
+    replaceState(payload.state, {
+      preserveHistory: true,
+      updatedAt: payload.updated_at || (payload.state && payload.state.updated_at) || null,
+    });
     setConnectionState("HTTP ONLY", false);
     setStatusMessage("Saved " + core.formatTimestamp(payload.updated_at || payload.state.updated_at), false);
   }
@@ -656,8 +861,10 @@
     const payload = await core.resetState();
     pendingRequestId = "";
     pendingActionType = "";
-    state = core.serializeState(payload.state);
-    render();
+    replaceState(payload.state, {
+      preserveHistory: true,
+      updatedAt: payload.updated_at || (payload.state && payload.state.updated_at) || null,
+    });
     setConnectionState("HTTP ONLY", false);
     setStatusMessage("Game reset complete.", false);
   }
@@ -680,7 +887,10 @@
   }
 
   function handleRealtimeState(payload) {
-    state = core.serializeState(payload.state);
+    replaceState(payload.state, {
+      preserveHistory: true,
+      updatedAt: payload.updated_at || (payload.state && payload.state.updated_at) || null,
+    });
     setConnectionState("WS LIVE", false);
 
     if (!initialLoadComplete) {
@@ -694,7 +904,6 @@
       pendingRequestId = "";
       pendingActionType = "";
       saveInFlight = false;
-      render();
       setStatusMessage(
         completedAction === "reset" ? "Game reset complete." : "Saved " + core.formatTimestamp(payload.updated_at || payload.state.updated_at),
         false
@@ -703,7 +912,6 @@
     }
 
     clearHistory();
-    render();
   }
 
   function handleRealtimeError(payload) {
@@ -1076,6 +1284,76 @@
     });
   });
 
+  displayIdleOptions.forEach(function bindDisplayIdleOption(option, index) {
+    option.addEventListener("click", function onDisplayIdleClick() {
+      commitDisplayIdleSelection(option.dataset.value);
+    });
+
+    option.addEventListener("keydown", function onDisplayIdleKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitDisplayIdleSelection(option.dataset.value);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        displayIdleOptions[Math.min(index + 1, displayIdleOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        displayIdleOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
+  });
+
+  displayBlackoutOptions.forEach(function bindDisplayBlackoutOption(option, index) {
+    option.addEventListener("click", function onDisplayBlackoutClick() {
+      commitDisplayBlackoutSelection(option.dataset.value);
+    });
+
+    option.addEventListener("keydown", function onDisplayBlackoutKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitDisplayBlackoutSelection(option.dataset.value);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        displayBlackoutOptions[Math.min(index + 1, displayBlackoutOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        displayBlackoutOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
+  });
+
   undoButton.addEventListener("click", function onUndo() {
     restoreFromHistory("undo");
   });
@@ -1251,6 +1529,9 @@
   closeMenuPanel();
   updateHistoryButtons();
   render();
+  refreshDisplayIdleSettingsSilently();
   loadState();
   connectRealtime();
+  window.setInterval(syncPowerButton, 10000);
+  window.setInterval(refreshDisplayIdleSettingsSilently, 60000);
 })();

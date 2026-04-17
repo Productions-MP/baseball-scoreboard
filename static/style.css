@@ -87,6 +87,80 @@ body.display-page *::after {
   background: var(--bg);
 }
 
+.display-screensaver {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000000;
+  z-index: 2;
+  pointer-events: none;
+  --screensaver-logo-size: min(29vw, 29vh, 312px);
+}
+
+.display-screensaver-x,
+.display-screensaver-y {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.display-screensaver-x {
+  animation: screensaver-bounce-x 19s linear infinite alternate;
+}
+
+.display-screensaver-y {
+  width: var(--screensaver-logo-size);
+  height: var(--screensaver-logo-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: screensaver-bounce-y 13s linear infinite alternate;
+  overflow: hidden;
+}
+
+.display-screensaver-logo {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+}
+
+.display-screensaver[hidden],
+.display-frame[hidden] {
+  display: none !important;
+}
+
+body.display-page:not(.is-screensaver) .display-screensaver {
+  display: none !important;
+}
+
+body.display-page.is-screensaver .display-screensaver {
+  display: grid !important;
+}
+
+@keyframes screensaver-bounce-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(100vw - var(--screensaver-logo-size)));
+  }
+}
+
+@keyframes screensaver-bounce-y {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(100vh - var(--screensaver-logo-size)));
+  }
+}
+
 .display-frame {
   position: absolute;
   left: 0;
@@ -97,6 +171,10 @@ body.display-page *::after {
 }
 
 body.display-page.is-blackout .display-shell {
+  background: #000000;
+}
+
+body.display-page.is-screensaver .display-shell {
   background: #000000;
 }
 

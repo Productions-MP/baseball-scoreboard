@@ -11,6 +11,17 @@
     style="--scoreboard-design-width: {{ active_design.width }}px; --scoreboard-design-height: {{ active_design.height }}px;"
   >
     <div class="display-shell">
+      <div class="display-screensaver" id="display-screensaver" hidden aria-hidden="true">
+        <div class="display-screensaver-x">
+          <div class="display-screensaver-y">
+            <img
+              class="display-screensaver-logo"
+              src="{{ url_for('public_asset', filename='hls.png') }}"
+              alt="{{ school_name }} baseball logo"
+            >
+          </div>
+        </div>
+      </div>
       <div class="display-frame" id="display-frame">
         {% include display_template %}
       </div>
@@ -23,6 +34,8 @@
         activeDesign: {{ active_design | tojson }},
         designs: {{ scoreboard_designs | tojson }},
         initialState: {{ initial_state | tojson }},
+        screensaverIdleSeconds: {{ screensaver_idle_seconds | tojson }},
+        blackoutIdleSeconds: {{ blackout_idle_seconds | tojson }},
         endpoints: {
           getState: "/api/state",
           updateState: "/api/state",
