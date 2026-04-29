@@ -160,6 +160,8 @@ SCOREBOARD_WIFI_SSID=<your-ssid>
 SCOREBOARD_WIFI_PSK=<your-password>
 SCOREBOARD_WIFI_ALLOW_FALLBACK=0
 SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS=180
+SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS=900
+SCOREBOARD_WIFI_PRIMARY_REBOOT_MAX_SECONDS=21600
 ```
 
 If those values are left blank and NetworkManager already has a saved profile for the current network, the installer will still try to reuse that profile on `wlan1`. The explicit SSID/PSK path is the most reliable option because it also lets the installer persist a dedicated `wlan1` profile.
@@ -167,6 +169,8 @@ If those values are left blank and NetworkManager already has a saved profile fo
 If your Pi is sealed up somewhere that makes the onboard radio unusable, set `SCOREBOARD_WIFI_ALLOW_FALLBACK=0` before you run the installer. That puts the board in USB-only Wi-Fi mode so the maintenance timer keeps retrying `wlan1` and never intentionally rejoins the network over `wlan0`.
 
 If you want the more forgiving maintenance behavior instead, leave `SCOREBOARD_WIFI_ALLOW_FALLBACK=1`. In that mode the timer keeps preferring and retrying `wlan1`, but it now waits out a recovery grace window before it brings up `wlan0`. The default is `180` seconds via `SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS`, which keeps brief `wlan1` drops from constantly waking the onboard radio. Once `wlan1` recovers, the helper shuts `wlan0` back down again.
+
+The same maintenance timer can also reboot the Pi after an unresolved USB Wi-Fi outage. By default `SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS=900`, so the helper keeps trying normal NetworkManager recovery first and only reboots after `wlan1` has been unhealthy for 15 minutes. Reboots back off across repeated unresolved outages: 15 minutes, 30 minutes, 60 minutes, and so on, capped by `SCOREBOARD_WIFI_PRIMARY_REBOOT_MAX_SECONDS=21600` by default. Set `SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS=0` to disable reboot escalation.
 
 ### 2. Apply the Pi display boot settings
 
@@ -333,7 +337,7 @@ On install, `scripts/switch-wifi-to-usb.sh` now configures persistent `NetworkMa
 - `scoreboard-wlan1` gets the higher autoconnect priority, lower route metric, and normal autoconnect so boot preference stays with the USB adapter.
 - `scoreboard-wlan0` is saved as a standby profile with autoconnect disabled, so it does not join the network unless `wlan1` fails and the helper explicitly brings it up.
 - If `.env` sets `SCOREBOARD_WIFI_ALLOW_FALLBACK=0`, the helper keeps `wlan0` disconnected and powered down so the Pi stays in USB-only Wi-Fi mode.
-- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi keeps reasserting `wlan1`; when fallback is enabled it only brings up `wlan0` after `wlan1` has stayed unhealthy longer than `SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS`, then shuts `wlan0` back down after `wlan1` recovers.
+- `scoreboard-wifi-failover.timer` runs `scripts/maintain-wifi-failover.sh` every 20 seconds so the Pi keeps reasserting `wlan1`; when fallback is enabled it only brings up `wlan0` after `wlan1` has stayed unhealthy longer than `SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS`, then shuts `wlan0` back down after `wlan1` recovers. If `wlan1` remains unhealthy longer than `SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS`, the helper reboots the Pi as a last-resort recovery step, then doubles the next reboot threshold up to `SCOREBOARD_WIFI_PRIMARY_REBOOT_MAX_SECONDS` so an AP outage does not cause rapid repeated reboots.
 - When both radios are up, the route metrics still prefer `wlan1`, so the USB adapter remains the primary uplink.
 - If NetworkManager is not available, the helper still falls back to the explicit `wpa_supplicant` path.
 

@@ -9,8 +9,12 @@ FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-wlan0}"
 USB_ADAPTER_ID="${SCOREBOARD_WIFI_USB_ADAPTER_ID:-0bda:c811}"
 ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-1}"
 PRIMARY_RECOVERY_GRACE_SECONDS="${SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS:-180}"
+PRIMARY_REBOOT_SECONDS="${SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS:-900}"
+PRIMARY_REBOOT_MAX_SECONDS="${SCOREBOARD_WIFI_PRIMARY_REBOOT_MAX_SECONDS:-21600}"
 STATE_DIR="${SCOREBOARD_WIFI_STATE_DIR:-/run/scoreboard}"
 STATE_FILE="${STATE_DIR}/wifi-failover-primary.state"
+REBOOT_STATE_DIR="${SCOREBOARD_WIFI_REBOOT_STATE_DIR:-/var/lib/scoreboard}"
+REBOOT_STATE_FILE="${REBOOT_STATE_DIR}/wifi-failover-primary-reboot-delay.state"
 PRIMARY_CONN="scoreboard-${USB_IFACE}"
 FALLBACK_CONN="scoreboard-${FALLBACK_IFACE}"
 
@@ -35,7 +39,10 @@ keys = [
     "SCOREBOARD_WIFI_FALLBACK_IFACE",
     "SCOREBOARD_WIFI_ALLOW_FALLBACK",
     "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+    "SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS",
+    "SCOREBOARD_WIFI_PRIMARY_REBOOT_MAX_SECONDS",
     "SCOREBOARD_WIFI_STATE_DIR",
+    "SCOREBOARD_WIFI_REBOOT_STATE_DIR",
 ]
 values = {key: "" for key in keys}
 
@@ -85,8 +92,13 @@ ensure_state_dir() {
   mkdir -p "${STATE_DIR}"
 }
 
+ensure_reboot_state_dir() {
+  mkdir -p "${REBOOT_STATE_DIR}"
+}
+
 clear_primary_failure_state() {
   rm -f "${STATE_FILE}"
+  rm -f "${REBOOT_STATE_FILE}"
 }
 
 mark_primary_failure_start() {
@@ -114,6 +126,60 @@ primary_failure_age() {
     age=0
   fi
   printf '%s\n' "${age}"
+}
+
+current_primary_reboot_seconds() {
+  if [ -f "${REBOOT_STATE_FILE}" ]; then
+    reboot_seconds="$(cat "${REBOOT_STATE_FILE}" 2>/dev/null || printf '%s\n' "${PRIMARY_REBOOT_SECONDS}")"
+  else
+    reboot_seconds="${PRIMARY_REBOOT_SECONDS}"
+  fi
+
+  case "${reboot_seconds}" in
+    ''|*[!0-9]*)
+      reboot_seconds="${PRIMARY_REBOOT_SECONDS}"
+      ;;
+  esac
+
+  if [ "${PRIMARY_REBOOT_MAX_SECONDS}" -gt 0 ] && [ "${reboot_seconds}" -gt "${PRIMARY_REBOOT_MAX_SECONDS}" ]; then
+    reboot_seconds="${PRIMARY_REBOOT_MAX_SECONDS}"
+  fi
+
+  printf '%s\n' "${reboot_seconds}"
+}
+
+record_primary_reboot_attempt() {
+  reboot_seconds="$(current_primary_reboot_seconds)"
+  next_reboot_seconds=$((reboot_seconds * 2))
+
+  if [ "${PRIMARY_REBOOT_MAX_SECONDS}" -gt 0 ] && [ "${next_reboot_seconds}" -gt "${PRIMARY_REBOOT_MAX_SECONDS}" ]; then
+    next_reboot_seconds="${PRIMARY_REBOOT_MAX_SECONDS}"
+  fi
+
+  ensure_reboot_state_dir
+  printf '%s\n' "${next_reboot_seconds}" > "${REBOOT_STATE_FILE}"
+}
+
+reboot_after_extended_primary_failure() {
+  if [ "${PRIMARY_REBOOT_SECONDS}" -le 0 ]; then
+    return
+  fi
+
+  failure_age="$(primary_failure_age || printf '0\n')"
+  reboot_seconds="$(current_primary_reboot_seconds)"
+  if [ "${failure_age}" -lt "${reboot_seconds}" ]; then
+    return
+  fi
+
+  record_primary_reboot_attempt
+  next_reboot_seconds="$(current_primary_reboot_seconds)"
+  log "Primary Wi-Fi has been unhealthy for ${failure_age}s, exceeding the current reboot threshold of ${reboot_seconds}s; rebooting the Pi. Next unresolved outage threshold is ${next_reboot_seconds}s."
+  if command -v systemctl >/dev/null 2>&1; then
+    sudo systemctl reboot
+  else
+    sudo shutdown -r now
+  fi
+  exit 1
 }
 
 wait_for_default_route() {
@@ -174,6 +240,10 @@ load_env_overrides
 USB_IFACE="${SCOREBOARD_WIFI_USB_IFACE:-${USB_IFACE}}"
 FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-${FALLBACK_IFACE}}"
 ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-${ALLOW_FALLBACK}}"
+PRIMARY_REBOOT_SECONDS="${SCOREBOARD_WIFI_PRIMARY_REBOOT_SECONDS:-${PRIMARY_REBOOT_SECONDS}}"
+PRIMARY_REBOOT_MAX_SECONDS="${SCOREBOARD_WIFI_PRIMARY_REBOOT_MAX_SECONDS:-${PRIMARY_REBOOT_MAX_SECONDS}}"
+REBOOT_STATE_DIR="${SCOREBOARD_WIFI_REBOOT_STATE_DIR:-${REBOOT_STATE_DIR}}"
+REBOOT_STATE_FILE="${REBOOT_STATE_DIR}/wifi-failover-primary-reboot-delay.state"
 PRIMARY_CONN="scoreboard-${USB_IFACE}"
 FALLBACK_CONN="scoreboard-${FALLBACK_IFACE}"
 
@@ -197,15 +267,20 @@ if adapter_present && have_iface "${USB_IFACE}"; then
   fi
 fi
 
-if ! fallback_enabled; then
+if adapter_present; then
+  mark_primary_failure_start
+  reboot_after_extended_primary_failure
+else
   clear_primary_failure_state
+fi
+
+if ! fallback_enabled; then
   keep_fallback_down
   log "USB Wi-Fi is configured as the only allowed uplink; keeping ${FALLBACK_IFACE} offline while retrying ${USB_IFACE}."
   exit 1
 fi
 
 if adapter_present && have_iface "${USB_IFACE}"; then
-  mark_primary_failure_start
   failure_age="$(primary_failure_age || printf '0\n')"
   if [ "${failure_age}" -lt "${PRIMARY_RECOVERY_GRACE_SECONDS}" ]; then
     remaining=$((PRIMARY_RECOVERY_GRACE_SECONDS - failure_age))
@@ -213,8 +288,6 @@ if adapter_present && have_iface "${USB_IFACE}"; then
     log "Primary Wi-Fi on ${USB_IFACE} is still within its recovery grace window (${failure_age}s/${PRIMARY_RECOVERY_GRACE_SECONDS}s); keeping ${FALLBACK_IFACE} offline for ${remaining}s more."
     exit 1
   fi
-else
-  clear_primary_failure_state
 fi
 
 if have_iface "${FALLBACK_IFACE}" && bring_up_connection "${FALLBACK_CONN}" "${FALLBACK_IFACE}"; then
