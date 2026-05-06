@@ -534,6 +534,7 @@ body.display-page.is-screensaver .display-shell {
   display: grid;
   gap: 12px;
   align-content: start;
+  min-width: 0;
 }
 
 .sport-control-panel[hidden] {
@@ -2368,6 +2369,10 @@ body.display-page.is-screensaver .display-shell {
   }
 
   .control-main-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .sport-control-panel[data-sport-panel="baseball"] {
     grid-template-columns: 1fr;
   }
 
