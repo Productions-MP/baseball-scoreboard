@@ -1,7 +1,7 @@
 [Unit]
-Description=Highlands Latin School baseball scoreboard StreamDeck controls
-After=network-online.target scoreboard-local.service
-Wants=network-online.target scoreboard-local.service
+Description=Highlands Latin School ScoreHLS StreamDeck controls
+After=network-online.target scorehls-local.service
+Wants=network-online.target scorehls-local.service
 
 [Service]
 Type=simple

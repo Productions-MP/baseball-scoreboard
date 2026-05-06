@@ -57,11 +57,8 @@ def load_env_file(path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
-def env_value(primary_name: str, legacy_name: str | None = None, default: str = "") -> str:
+def env_value(primary_name: str, default: str = "") -> str:
     value = os.environ.get(primary_name)
-
-    if value is None and legacy_name:
-        value = os.environ.get(legacy_name)
 
     if value is None:
         return default
@@ -91,23 +88,23 @@ for env_file in ENV_FILES:
     load_env_file(env_file)
 
 
-SCOREBOARD_PORT = clamp_int(env_value("SCOREBOARD_PORT", "FALLBACK_PORT", "5050"), 1, 65535, 5050)
-BASE_URL = f"http://127.0.0.1:{SCOREBOARD_PORT}"
+SCOREHLS_PORT = clamp_int(env_value("SCOREHLS_PORT", "5050"), 1, 65535, 5050)
+BASE_URL = f"http://127.0.0.1:{SCOREHLS_PORT}"
 STATE_URL = f"{BASE_URL}/api/state"
 ACTION_URL = f"{BASE_URL}/api/action"
 RESET_URL = f"{BASE_URL}/api/reset"
-CONTROL_KEY = env_value("SCOREBOARD_CONTROL_KEY", "FALLBACK_CONTROL_KEY", "").strip()
-BRIGHTNESS = clamp_int(env_value("SCOREBOARD_STREAMDECK_BRIGHTNESS", default="45"), 0, 100, 45)
-POLL_SECONDS = clamp_float(env_value("SCOREBOARD_STREAMDECK_POLL_SECONDS", default="2.0"), 0.5, 30.0, 2.0)
-CONFIRM_SECONDS = clamp_float(env_value("SCOREBOARD_STREAMDECK_CONFIRM_SECONDS", default="4.0"), 1.0, 20.0, 4.0)
-LOG_LEVEL = env_value("SCOREBOARD_STREAMDECK_LOG_LEVEL", default="INFO").upper()
+CONTROL_KEY = env_value("SCOREHLS_CONTROL_KEY", "").strip()
+BRIGHTNESS = clamp_int(env_value("SCOREHLS_STREAMDECK_BRIGHTNESS", default="45"), 0, 100, 45)
+POLL_SECONDS = clamp_float(env_value("SCOREHLS_STREAMDECK_POLL_SECONDS", default="2.0"), 0.5, 30.0, 2.0)
+CONFIRM_SECONDS = clamp_float(env_value("SCOREHLS_STREAMDECK_CONFIRM_SECONDS", default="4.0"), 1.0, 20.0, 4.0)
+LOG_LEVEL = env_value("SCOREHLS_STREAMDECK_LOG_LEVEL", default="INFO").upper()
 
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
     format="%(asctime)s %(levelname)s %(message)s",
 )
-LOGGER = logging.getLogger("scoreboard-streamdeck")
+LOGGER = logging.getLogger("scorehls-streamdeck")
 
 
 @dataclass(frozen=True)
@@ -166,7 +163,7 @@ class LocalScoreboardApi:
             body = json.dumps(payload).encode("utf-8")
 
         if self.control_key:
-            headers["x-scoreboard-key"] = self.control_key
+            headers["x-scorehls-key"] = self.control_key
 
         req = request.Request(url, data=body, headers=headers, method=method)
 
@@ -184,12 +181,12 @@ class LocalScoreboardApi:
 
             raise ApiError(exc.code, message) from exc
         except error.URLError as exc:
-            raise ApiError(503, str(exc.reason or "Unable to reach the local scoreboard server.")) from exc
+            raise ApiError(503, str(exc.reason or "Unable to reach the local ScoreHLS server.")) from exc
 
         try:
             return json.loads(raw_body or "{}")
         except json.JSONDecodeError as exc:
-            raise ApiError(500, "The local scoreboard server returned invalid JSON.") from exc
+            raise ApiError(500, "The local ScoreHLS server returned invalid JSON.") from exc
 
 
 class DeckSession:
@@ -415,7 +412,7 @@ class DeckSession:
                 ButtonView("RESET", "GAME", background=COLOR_WARNING, action="reset-game", requires_confirm=True),
                 ButtonView("STATE", f"{summary['half']} {summary['inning']}", footer="LIVE", background=COLOR_MUTED),
                 ButtonView("COUNT", f"{summary['ball']}-{summary['strike']}-{summary['out']}", footer="B-S-O", background=COLOR_MUTED),
-                ButtonView("RESTART", "APP", background=COLOR_WARNING, action="restart-scoreboard", requires_confirm=True),
+                ButtonView("RESTART", "APP", background=COLOR_WARNING, action="restart-scorehls", requires_confirm=True),
                 ButtonView("REBOOT", "BOARD", background=COLOR_DANGER, action="reboot-pi", requires_confirm=True),
                 ButtonView("SHUTDOWN", "BOARD", background=COLOR_DANGER, action="shutdown-pi", requires_confirm=True),
                 ButtonView("GUEST", summary["guest_total"], footer="TOTAL", background=COLOR_MUTED),
@@ -669,9 +666,9 @@ class StreamDeckController:
                 self._apply_state_update(next_state, status_message="RESET")
                 return
 
-            if action == "restart-scoreboard":
+            if action == "restart-scorehls":
                 self._run_admin_command(
-                    ["systemctl", "restart", "scoreboard-local.service", "scoreboard-display.service"],
+                    ["systemctl", "restart", "scorehls-local.service", "scorehls-display.service"],
                     status_message="RESTARTING",
                 )
                 self.latest_online = False

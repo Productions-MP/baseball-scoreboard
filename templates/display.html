@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>{{ school_name }} Baseball Scoreboard</title>
+    <title>ScoreHLS Display</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   </head>
   <body
     class="display-page"
-    style="--scoreboard-design-width: {{ active_design.width }}px; --scoreboard-design-height: {{ active_design.height }}px;"
+    style="--scorehls-template-width: {{ active_template.width }}px; --scorehls-template-height: {{ active_template.height }}px;"
   >
     <div class="display-shell">
       <div class="display-screensaver" id="display-screensaver" hidden aria-hidden="true">
@@ -17,7 +17,7 @@
             <img
               class="display-screensaver-logo"
               src="{{ url_for('public_asset', filename='hls.png') }}"
-              alt="{{ school_name }} baseball logo"
+              alt="{{ school_name }} logo"
             >
           </div>
         </div>
@@ -28,11 +28,11 @@
     </div>
 
     <script>
-      window.SCOREBOARD_CONFIG = {
+      window.SCOREHLS_CONFIG = {
         requireKey: false,
-        defaultDesignId: {{ default_design_id | tojson }},
-        activeDesign: {{ active_design | tojson }},
-        designs: {{ scoreboard_designs | tojson }},
+        defaultSportId: {{ default_sport_id | tojson }},
+        activeTemplate: {{ active_template | tojson }},
+        sports: {{ sports | tojson }},
         initialState: {{ initial_state | tojson }},
         screensaverIdleSeconds: {{ screensaver_idle_seconds | tojson }},
         blackoutIdleSeconds: {{ blackout_idle_seconds | tojson }},

@@ -11,7 +11,7 @@ if command -v chromium-browser >/dev/null 2>&1; then
 elif command -v chromium >/dev/null 2>&1; then
   CHROMIUM_BIN="chromium"
 else
-  echo "Chromium was not found. Install chromium-browser or chromium to open the scoreboard." >&2
+  echo "Chromium was not found. Install chromium-browser or chromium to open ScoreHLS." >&2
   exit 1
 fi
 

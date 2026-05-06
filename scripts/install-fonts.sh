@@ -7,7 +7,7 @@ FONT_SOURCE_DIR="${APP_ROOT}/public/fonts"
 PI_USER="${SUDO_USER:-$USER}"
 PI_HOME="$(getent passwd "${PI_USER}" 2>/dev/null | cut -d: -f6)"
 PI_HOME="${PI_HOME:-/home/${PI_USER}}"
-FONT_TARGET_DIR="${PI_HOME}/.local/share/fonts/baseball-scoreboard"
+FONT_TARGET_DIR="${PI_HOME}/.local/share/fonts/scorehls"
 
 if [ ! -d "${FONT_SOURCE_DIR}" ]; then
   exit 0

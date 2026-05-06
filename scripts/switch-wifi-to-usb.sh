@@ -4,19 +4,19 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 ENV_FILE="${APP_ROOT}/.env"
-USB_IFACE="${SCOREBOARD_WIFI_USB_IFACE:-wlan1}"
-FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-wlan0}"
-USB_ADAPTER_ID="${SCOREBOARD_WIFI_USB_ADAPTER_ID:-0bda:c811}"
-USB_METRIC="${SCOREBOARD_WIFI_USB_METRIC:-150}"
-FALLBACK_METRIC="${SCOREBOARD_WIFI_FALLBACK_METRIC:-350}"
-USB_DRIVER_PATTERN="${SCOREBOARD_WIFI_USB_DRIVER_PATTERN:-8821cu|8821c|rtl8821cu}"
-WIFI_COUNTRY="${SCOREBOARD_WIFI_COUNTRY:-US}"
-DISABLE_FALLBACK_ON_SUCCESS="${SCOREBOARD_WIFI_DISABLE_WLAN0:-1}"
-ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-1}"
+USB_IFACE="${SCOREHLS_WIFI_USB_IFACE:-wlan1}"
+FALLBACK_IFACE="${SCOREHLS_WIFI_FALLBACK_IFACE:-wlan0}"
+USB_ADAPTER_ID="${SCOREHLS_WIFI_USB_ADAPTER_ID:-0bda:c811}"
+USB_METRIC="${SCOREHLS_WIFI_USB_METRIC:-150}"
+FALLBACK_METRIC="${SCOREHLS_WIFI_FALLBACK_METRIC:-350}"
+USB_DRIVER_PATTERN="${SCOREHLS_WIFI_USB_DRIVER_PATTERN:-8821cu|8821c|rtl8821cu}"
+WIFI_COUNTRY="${SCOREHLS_WIFI_COUNTRY:-US}"
+DISABLE_FALLBACK_ON_SUCCESS="${SCOREHLS_WIFI_DISABLE_WLAN0:-1}"
+ALLOW_FALLBACK="${SCOREHLS_WIFI_ALLOW_FALLBACK:-1}"
 NM_CONFIG_DIR="/etc/NetworkManager/conf.d"
-NM_MANAGED_CONFIG="${NM_CONFIG_DIR}/90-scoreboard-wifi-managed.conf"
-SCOREBOARD_WIFI_SSID="${SCOREBOARD_WIFI_SSID:-}"
-SCOREBOARD_WIFI_PSK="${SCOREBOARD_WIFI_PSK:-}"
+NM_MANAGED_CONFIG="${NM_CONFIG_DIR}/90-scorehls-wifi-managed.conf"
+SCOREHLS_WIFI_SSID="${SCOREHLS_WIFI_SSID:-}"
+SCOREHLS_WIFI_PSK="${SCOREHLS_WIFI_PSK:-}"
 
 log() {
   echo "[wifi-switchover] $*"
@@ -39,15 +39,15 @@ import sys
 
 env_path = Path(sys.argv[1])
 keys = [
-    "SCOREBOARD_WIFI_SSID",
-    "SCOREBOARD_WIFI_PSK",
-    "SCOREBOARD_WIFI_COUNTRY",
-    "SCOREBOARD_WIFI_DISABLE_WLAN0",
-    "SCOREBOARD_WIFI_ALLOW_FALLBACK",
-    "SCOREBOARD_WIFI_USB_IFACE",
-    "SCOREBOARD_WIFI_FALLBACK_IFACE",
-    "SCOREBOARD_WIFI_USB_METRIC",
-    "SCOREBOARD_WIFI_FALLBACK_METRIC",
+    "SCOREHLS_WIFI_SSID",
+    "SCOREHLS_WIFI_PSK",
+    "SCOREHLS_WIFI_COUNTRY",
+    "SCOREHLS_WIFI_DISABLE_WLAN0",
+    "SCOREHLS_WIFI_ALLOW_FALLBACK",
+    "SCOREHLS_WIFI_USB_IFACE",
+    "SCOREHLS_WIFI_FALLBACK_IFACE",
+    "SCOREHLS_WIFI_USB_METRIC",
+    "SCOREHLS_WIFI_FALLBACK_METRIC",
 ]
 values = {key: "" for key in keys}
 
@@ -129,11 +129,11 @@ networkmanager_available() {
 write_networkmanager_device_policy() {
   tmp_file="$(mktemp)"
   cat > "${tmp_file}" <<EOF
-[device-scoreboard-${USB_IFACE}]
+[device-scorehls-${USB_IFACE}]
 match-device=interface-name:${USB_IFACE}
 managed=1
 
-[device-scoreboard-${FALLBACK_IFACE}]
+[device-scorehls-${FALLBACK_IFACE}]
 match-device=interface-name:${FALLBACK_IFACE}
 managed=1
 EOF
@@ -197,8 +197,8 @@ usb_iface = sys.argv[3]
 usb_metric = sys.argv[4]
 fallback_iface = sys.argv[5]
 fallback_metric = sys.argv[6]
-start_marker = "# BEGIN scoreboard-wifi-metrics"
-end_marker = "# END scoreboard-wifi-metrics"
+start_marker = "# BEGIN scorehls-wifi-metrics"
+end_marker = "# END scorehls-wifi-metrics"
 
 content = source_path.read_text(encoding="utf-8")
 block = "\n".join(
@@ -247,9 +247,9 @@ ensure_nm_wifi_profile() {
   if sudo nmcli -t -f NAME connection show | grep -Fxq "${profile_name}"; then
     sudo nmcli connection modify "${profile_name}" \
       connection.interface-name "${iface}" \
-      802-11-wireless.ssid "${SCOREBOARD_WIFI_SSID}" >/dev/null
+      802-11-wireless.ssid "${SCOREHLS_WIFI_SSID}" >/dev/null
   else
-    sudo nmcli connection add type wifi ifname "${iface}" con-name "${profile_name}" ssid "${SCOREBOARD_WIFI_SSID}" >/dev/null
+    sudo nmcli connection add type wifi ifname "${iface}" con-name "${profile_name}" ssid "${SCOREHLS_WIFI_SSID}" >/dev/null
   fi
 
   sudo nmcli connection modify "${profile_name}" \
@@ -260,17 +260,17 @@ ensure_nm_wifi_profile() {
     connection.wait-device-timeout 30000 \
     802-11-wireless.mode infrastructure \
     802-11-wireless-security.key-mgmt wpa-psk \
-    802-11-wireless-security.psk "${SCOREBOARD_WIFI_PSK}" \
+    802-11-wireless-security.psk "${SCOREHLS_WIFI_PSK}" \
     ipv4.route-metric "${metric}" \
     ipv6.route-metric "${metric}" >/dev/null
 }
 
 configure_networkmanager_profiles() {
-  usb_connection_name="scoreboard-${USB_IFACE}"
-  fallback_connection_name="scoreboard-${FALLBACK_IFACE}"
+  usb_connection_name="scorehls-${USB_IFACE}"
+  fallback_connection_name="scorehls-${FALLBACK_IFACE}"
 
-  if [ -z "${SCOREBOARD_WIFI_SSID}" ] || [ -z "${SCOREBOARD_WIFI_PSK}" ]; then
-    warn "Persistent NetworkManager setup requires SCOREBOARD_WIFI_SSID and SCOREBOARD_WIFI_PSK in ${ENV_FILE}."
+  if [ -z "${SCOREHLS_WIFI_SSID}" ] || [ -z "${SCOREHLS_WIFI_PSK}" ]; then
+    warn "Persistent NetworkManager setup requires SCOREHLS_WIFI_SSID and SCOREHLS_WIFI_PSK in ${ENV_FILE}."
     return 1
   fi
 
@@ -331,8 +331,8 @@ connect_with_networkmanager() {
 }
 
 connect_with_wpa_supplicant() {
-  if [ -z "${SCOREBOARD_WIFI_SSID}" ] || [ -z "${SCOREBOARD_WIFI_PSK}" ]; then
-    warn "wpa_supplicant fallback requires SCOREBOARD_WIFI_SSID and SCOREBOARD_WIFI_PSK in ${ENV_FILE}."
+  if [ -z "${SCOREHLS_WIFI_SSID}" ] || [ -z "${SCOREHLS_WIFI_PSK}" ]; then
+    warn "wpa_supplicant fallback requires SCOREHLS_WIFI_SSID and SCOREHLS_WIFI_PSK in ${ENV_FILE}."
     return 1
   fi
 
@@ -348,7 +348,7 @@ connect_with_wpa_supplicant() {
     printf 'ctrl_interface=DIR=/run/wpa_supplicant GROUP=netdev\n'
     printf 'update_config=0\n'
     printf 'country=%s\n' "${WIFI_COUNTRY}"
-    wpa_passphrase "${SCOREBOARD_WIFI_SSID}" "${SCOREBOARD_WIFI_PSK}"
+    wpa_passphrase "${SCOREHLS_WIFI_SSID}" "${SCOREHLS_WIFI_PSK}"
   } > "${tmp_cfg}"
 
   sudo install -m 0600 "${tmp_cfg}" "/etc/wpa_supplicant/wpa_supplicant-${USB_IFACE}.conf"
@@ -379,7 +379,7 @@ reconnect_fallback_iface() {
 
   bring_iface_up "${FALLBACK_IFACE}" || true
   if networkmanager_available; then
-    sudo nmcli connection up id "scoreboard-${FALLBACK_IFACE}" ifname "${FALLBACK_IFACE}" >/dev/null 2>&1 || sudo nmcli device connect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
+    sudo nmcli connection up id "scorehls-${FALLBACK_IFACE}" ifname "${FALLBACK_IFACE}" >/dev/null 2>&1 || sudo nmcli device connect "${FALLBACK_IFACE}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -400,13 +400,13 @@ disable_fallback_iface() {
 }
 
 load_env_overrides
-USB_IFACE="${SCOREBOARD_WIFI_USB_IFACE:-${USB_IFACE}}"
-FALLBACK_IFACE="${SCOREBOARD_WIFI_FALLBACK_IFACE:-${FALLBACK_IFACE}}"
-USB_METRIC="${SCOREBOARD_WIFI_USB_METRIC:-${USB_METRIC}}"
-FALLBACK_METRIC="${SCOREBOARD_WIFI_FALLBACK_METRIC:-${FALLBACK_METRIC}}"
-WIFI_COUNTRY="${SCOREBOARD_WIFI_COUNTRY:-${WIFI_COUNTRY}}"
-DISABLE_FALLBACK_ON_SUCCESS="${SCOREBOARD_WIFI_DISABLE_WLAN0:-${DISABLE_FALLBACK_ON_SUCCESS}}"
-ALLOW_FALLBACK="${SCOREBOARD_WIFI_ALLOW_FALLBACK:-${ALLOW_FALLBACK}}"
+USB_IFACE="${SCOREHLS_WIFI_USB_IFACE:-${USB_IFACE}}"
+FALLBACK_IFACE="${SCOREHLS_WIFI_FALLBACK_IFACE:-${FALLBACK_IFACE}}"
+USB_METRIC="${SCOREHLS_WIFI_USB_METRIC:-${USB_METRIC}}"
+FALLBACK_METRIC="${SCOREHLS_WIFI_FALLBACK_METRIC:-${FALLBACK_METRIC}}"
+WIFI_COUNTRY="${SCOREHLS_WIFI_COUNTRY:-${WIFI_COUNTRY}}"
+DISABLE_FALLBACK_ON_SUCCESS="${SCOREHLS_WIFI_DISABLE_WLAN0:-${DISABLE_FALLBACK_ON_SUCCESS}}"
+ALLOW_FALLBACK="${SCOREHLS_WIFI_ALLOW_FALLBACK:-${ALLOW_FALLBACK}}"
 
 if ! adapter_present; then
   log "USB adapter ${USB_ADAPTER_ID} was not detected on ${USB_IFACE}; skipping switchover."
@@ -447,7 +447,7 @@ fi
 
 warn "USB Wi-Fi switchover failed. Re-enabling ${FALLBACK_IFACE}."
 if ! fallback_enabled; then
-  warn "Fallback Wi-Fi is disabled by SCOREBOARD_WIFI_ALLOW_FALLBACK=0, so ${FALLBACK_IFACE} will remain offline while ${USB_IFACE} is retried."
+  warn "Fallback Wi-Fi is disabled by SCOREHLS_WIFI_ALLOW_FALLBACK=0, so ${FALLBACK_IFACE} will remain offline while ${USB_IFACE} is retried."
   disable_fallback_iface
   exit 1
 fi

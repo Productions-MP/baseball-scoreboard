@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 
-SERVICE_NAME="scoreboard-display.service"
+SERVICE_NAME="scorehls-display.service"
 
 if [ "$(id -u)" -eq 0 ]; then
   exec systemctl restart "${SERVICE_NAME}"

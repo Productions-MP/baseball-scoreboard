@@ -3,24 +3,22 @@ set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LEGACY_ROOT="${APP_ROOT}/pi-fallback"
-LOCAL_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-local.service"
-DISPLAY_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-display.service"
-STREAMDECK_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-streamdeck.service"
-WIFI_FAILOVER_SERVICE_TEMPLATE="${APP_ROOT}/services/scoreboard-wifi-failover.service"
-WIFI_FAILOVER_TIMER_TEMPLATE="${APP_ROOT}/services/scoreboard-wifi-failover.timer"
-PAM_TEMPLATE="${APP_ROOT}/services/scoreboard-display.pam"
+LOCAL_SERVICE_TEMPLATE="${APP_ROOT}/services/scorehls-local.service"
+DISPLAY_SERVICE_TEMPLATE="${APP_ROOT}/services/scorehls-display.service"
+STREAMDECK_SERVICE_TEMPLATE="${APP_ROOT}/services/scorehls-streamdeck.service"
+WIFI_FAILOVER_SERVICE_TEMPLATE="${APP_ROOT}/services/scorehls-wifi-failover.service"
+WIFI_FAILOVER_TIMER_TEMPLATE="${APP_ROOT}/services/scorehls-wifi-failover.timer"
+PAM_TEMPLATE="${APP_ROOT}/services/scorehls-display.pam"
 WIFI_SWITCH_SCRIPT="${APP_ROOT}/scripts/switch-wifi-to-usb.sh"
 SYSTEMD_DIR="/etc/systemd/system"
-LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-local.service"
-DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-display.service"
-STREAMDECK_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-streamdeck.service"
-WIFI_FAILOVER_SERVICE_TARGET="${SYSTEMD_DIR}/scoreboard-wifi-failover.service"
-WIFI_FAILOVER_TIMER_TARGET="${SYSTEMD_DIR}/scoreboard-wifi-failover.timer"
-PAM_TARGET="/etc/pam.d/scoreboard-display"
-SUDOERS_TARGET="/etc/sudoers.d/scoreboard-local-system-actions"
+LOCAL_SERVICE_TARGET="${SYSTEMD_DIR}/scorehls-local.service"
+DISPLAY_SERVICE_TARGET="${SYSTEMD_DIR}/scorehls-display.service"
+STREAMDECK_SERVICE_TARGET="${SYSTEMD_DIR}/scorehls-streamdeck.service"
+WIFI_FAILOVER_SERVICE_TARGET="${SYSTEMD_DIR}/scorehls-wifi-failover.service"
+WIFI_FAILOVER_TIMER_TARGET="${SYSTEMD_DIR}/scorehls-wifi-failover.timer"
+PAM_TARGET="/etc/pam.d/scorehls-display"
+SUDOERS_TARGET="/etc/sudoers.d/scorehls-local-system-actions"
 ENV_FILE="${APP_ROOT}/.env"
-LEGACY_ENV_FILE="${LEGACY_ROOT}/pi.env"
 APP_USER="${SUDO_USER:-$USER}"
 APP_GROUP="$(id -gn "${APP_USER}")"
 APP_UID="$(id -u "${APP_USER}")"
@@ -71,12 +69,7 @@ import sys
 
 autostart_path = Path(sys.argv[1])
 lines = autostart_path.read_text(encoding="utf-8").splitlines()
-remove_fragments = (
-    "open-primary.sh",
-    "open-fallback.sh",
-    "open-local.sh",
-)
-
+remove_fragments = ("open-local.sh",)
 filtered = [line for line in lines if not any(fragment in line for fragment in remove_fragments)]
 autostart_path.write_text("\n".join(filtered) + ("\n" if filtered else ""), encoding="utf-8")
 PY
@@ -108,18 +101,10 @@ PY
 }
 
 if [ ! -f "${ENV_FILE}" ]; then
-  if [ -f "${LEGACY_ENV_FILE}" ]; then
-    cp "${LEGACY_ENV_FILE}" "${ENV_FILE}"
-  else
-    cp "${APP_ROOT}/.env.example" "${ENV_FILE}"
-  fi
+  cp "${APP_ROOT}/.env.example" "${ENV_FILE}"
 fi
 
 sudo chown "${APP_USER}:${APP_GROUP}" "${ENV_FILE}" >/dev/null 2>&1 || true
-
-if [ -d "${LEGACY_ROOT}/runtime" ] && [ ! -d "${APP_ROOT}/runtime" ]; then
-  mv "${LEGACY_ROOT}/runtime" "${APP_ROOT}/runtime"
-fi
 
 if command -v apt-get >/dev/null 2>&1; then
   install_apt_packages python3 python3-venv python3-pip python3-dev build-essential libhidapi-dev libusb-1.0-0-dev dbus-user-session cage curl wlrctl
@@ -160,28 +145,33 @@ for line in lines:
     key, value = line.split("=", 1)
     existing[key.strip()] = value.strip()
 
-port = existing.get("SCOREBOARD_PORT", "5050") or "5050"
+port = existing.get("SCOREHLS_PORT", "5050") or "5050"
 existing.update(
     {
-        "SCOREBOARD_DISPLAY_URL": f"http://127.0.0.1:{port}/display",
-        "SCOREBOARD_CONTROL_URL": f"http://127.0.0.1:{port}/control",
+        "SCOREHLS_DISPLAY_URL": f"http://127.0.0.1:{port}/display",
+        "SCOREHLS_CONTROL_URL": f"http://127.0.0.1:{port}/control",
     }
 )
 
 ordered_keys = [
-    "SCOREBOARD_DISPLAY_URL",
-    "SCOREBOARD_CONTROL_URL",
-    "SCOREBOARD_HOST",
-    "SCOREBOARD_PORT",
-    "SCOREBOARD_CONTROL_KEY",
+    "SCOREHLS_DISPLAY_URL",
+    "SCOREHLS_CONTROL_URL",
+    "SCOREHLS_HOST",
+    "SCOREHLS_PORT",
+    "SCOREHLS_CONTROL_KEY",
     "SCHOOL_NAME",
-    "SCOREBOARD_STATE_FILE",
-    "SCOREBOARD_STREAMDECK_BRIGHTNESS",
-    "SCOREBOARD_STREAMDECK_POLL_SECONDS",
-    "SCOREBOARD_STREAMDECK_CONFIRM_SECONDS",
-    "SCOREBOARD_WIFI_SSID",
-    "SCOREBOARD_WIFI_PSK",
-    "SCOREBOARD_WIFI_ALLOW_FALLBACK",
+    "SCOREHLS_STATE_FILE",
+    "SCOREHLS_STREAMDECK_BRIGHTNESS",
+    "SCOREHLS_STREAMDECK_POLL_SECONDS",
+    "SCOREHLS_STREAMDECK_CONFIRM_SECONDS",
+    "SCOREHLS_WIFI_SSID",
+    "SCOREHLS_WIFI_PSK",
+    "SCOREHLS_WIFI_ALLOW_FALLBACK",
+    "SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+    "SCOREHLS_WIFI_PRIMARY_REBOOT_SECONDS",
+    "SCOREHLS_WIFI_PRIMARY_REBOOT_MAX_SECONDS",
+    "SCOREHLS_SCREENSAVER_IDLE_SECONDS",
+    "SCOREHLS_BLACKOUT_IDLE_SECONDS",
 ]
 
 new_lines = []
@@ -199,18 +189,18 @@ PY
 chmod +x "${APP_ROOT}/scripts/"*.sh
 "${APP_ROOT}/scripts/install-fonts.sh"
 
-render_template "${LOCAL_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-local.service"
-render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-display.service"
-render_template "${STREAMDECK_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-streamdeck.service"
-render_template "${WIFI_FAILOVER_SERVICE_TEMPLATE}" "${TMP_DIR}/scoreboard-wifi-failover.service"
-render_template "${WIFI_FAILOVER_TIMER_TEMPLATE}" "${TMP_DIR}/scoreboard-wifi-failover.timer"
-render_template "${PAM_TEMPLATE}" "${TMP_DIR}/scoreboard-display.pam"
+render_template "${LOCAL_SERVICE_TEMPLATE}" "${TMP_DIR}/scorehls-local.service"
+render_template "${DISPLAY_SERVICE_TEMPLATE}" "${TMP_DIR}/scorehls-display.service"
+render_template "${STREAMDECK_SERVICE_TEMPLATE}" "${TMP_DIR}/scorehls-streamdeck.service"
+render_template "${WIFI_FAILOVER_SERVICE_TEMPLATE}" "${TMP_DIR}/scorehls-wifi-failover.service"
+render_template "${WIFI_FAILOVER_TIMER_TEMPLATE}" "${TMP_DIR}/scorehls-wifi-failover.timer"
+render_template "${PAM_TEMPLATE}" "${TMP_DIR}/scorehls-display.pam"
 
 SYSTEMCTL_BIN="$(command -v systemctl)"
 SHUTDOWN_BIN="$(command -v shutdown)"
-SUDOERS_TEMP="${TMP_DIR}/scoreboard-local-system-actions.sudoers"
+SUDOERS_TEMP="${TMP_DIR}/scorehls-local-system-actions.sudoers"
 cat > "${SUDOERS_TEMP}" <<EOF
-${APP_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_BIN} restart scoreboard-local.service scoreboard-display.service
+${APP_USER} ALL=(root) NOPASSWD: ${SYSTEMCTL_BIN} restart scorehls-local.service scorehls-display.service
 ${APP_USER} ALL=(root) NOPASSWD: ${SHUTDOWN_BIN} -r now
 ${APP_USER} ALL=(root) NOPASSWD: ${SHUTDOWN_BIN} now
 EOF
@@ -218,27 +208,19 @@ if command -v visudo >/dev/null 2>&1; then
   sudo visudo -cf "${SUDOERS_TEMP}"
 fi
 
-sudo systemctl disable --now scoreboard-fallback.service >/dev/null 2>&1 || true
-sudo rm -f "${SYSTEMD_DIR}/scoreboard-fallback.service"
-sudo systemctl disable --now scoreboard-wifi-switchover.service >/dev/null 2>&1 || true
-sudo rm -f "${SYSTEMD_DIR}/scoreboard-wifi-switchover.service"
-sudo systemctl disable --now scoreboard-wifi-failover.timer >/dev/null 2>&1 || true
-sudo rm -f "${SYSTEMD_DIR}/scoreboard-wifi-failover.service" "${SYSTEMD_DIR}/scoreboard-wifi-failover.timer"
-sudo systemctl disable --now scoreboard-display.service >/dev/null 2>&1 || true
-sudo systemctl disable --now scoreboard-streamdeck.service >/dev/null 2>&1 || true
-sudo install -m 0644 "${TMP_DIR}/scoreboard-local.service" "${LOCAL_SERVICE_TARGET}"
-sudo install -m 0644 "${TMP_DIR}/scoreboard-display.service" "${DISPLAY_SERVICE_TARGET}"
-sudo install -m 0644 "${TMP_DIR}/scoreboard-streamdeck.service" "${STREAMDECK_SERVICE_TARGET}"
-sudo install -m 0644 "${TMP_DIR}/scoreboard-wifi-failover.service" "${WIFI_FAILOVER_SERVICE_TARGET}"
-sudo install -m 0644 "${TMP_DIR}/scoreboard-wifi-failover.timer" "${WIFI_FAILOVER_TIMER_TARGET}"
-sudo install -m 0644 "${TMP_DIR}/scoreboard-display.pam" "${PAM_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scorehls-local.service" "${LOCAL_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scorehls-display.service" "${DISPLAY_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scorehls-streamdeck.service" "${STREAMDECK_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scorehls-wifi-failover.service" "${WIFI_FAILOVER_SERVICE_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scorehls-wifi-failover.timer" "${WIFI_FAILOVER_TIMER_TARGET}"
+sudo install -m 0644 "${TMP_DIR}/scorehls-display.pam" "${PAM_TARGET}"
 sudo install -m 0440 "${SUDOERS_TEMP}" "${SUDOERS_TARGET}"
 sudo systemctl daemon-reload
-sudo systemctl enable --now scoreboard-local.service
-sudo systemctl enable --now scoreboard-display.service
-sudo systemctl enable --now scoreboard-streamdeck.service
-sudo systemctl enable --now scoreboard-wifi-failover.timer
-sudo systemctl start scoreboard-wifi-failover.service >/dev/null 2>&1 || true
+sudo systemctl enable --now scorehls-local.service
+sudo systemctl enable --now scorehls-display.service
+sudo systemctl enable --now scorehls-streamdeck.service
+sudo systemctl enable --now scorehls-wifi-failover.timer
+sudo systemctl start scorehls-wifi-failover.service >/dev/null 2>&1 || true
 sudo systemctl set-default graphical.target
 
 LXDE_AUTOSTART_DIR="${APP_HOME}/.config/lxsession/LXDE-pi"
@@ -248,12 +230,12 @@ LABWC_AUTOSTART_FILE="${LABWC_AUTOSTART_DIR}/autostart"
 cleanup_desktop_autostart "${LXDE_AUTOSTART_FILE}"
 cleanup_desktop_autostart "${LABWC_AUTOSTART_FILE}"
 
-rm -f "${APP_HOME}/Desktop/Scoreboard Display.desktop" "${APP_HOME}/Desktop/Scoreboard Control.desktop"
+rm -f "${APP_HOME}/Desktop/ScoreHLS Display.desktop" "${APP_HOME}/Desktop/ScoreHLS Control.desktop"
 
 if [ -x "${WIFI_SWITCH_SCRIPT}" ]; then
   if ! "${WIFI_SWITCH_SCRIPT}"; then
-    if grep -q '^SCOREBOARD_WIFI_ALLOW_FALLBACK=0$' "${ENV_FILE}"; then
-      echo "Warning: USB Wi-Fi switchover did not complete while fallback was disabled. The board will keep retrying ${APP_ROOT}/scripts/maintain-wifi-failover.sh against wlan1 only." >&2
+    if grep -q '^SCOREHLS_WIFI_ALLOW_FALLBACK=0$' "${ENV_FILE}"; then
+      echo "Warning: USB Wi-Fi switchover did not complete while fallback was disabled. ScoreHLS will keep retrying ${APP_ROOT}/scripts/maintain-wifi-failover.sh against wlan1 only." >&2
     else
       echo "Warning: USB Wi-Fi switchover did not complete. wlan0 remains available as the fallback interface." >&2
     fi
@@ -282,10 +264,10 @@ if [ -f /boot/firmware/cmdline.txt ] && ! grep -q "video=HDMI-A-1:" /boot/firmwa
 - Add video=HDMI-A-1:D to /boot/firmware/cmdline.txt to force the Pi 4 kiosk to HDMI-0"
 fi
 
-echo "Local scoreboard server installed."
-DISPLAY_URL="$(grep -m1 '^SCOREBOARD_DISPLAY_URL=' "${ENV_FILE}" | cut -d= -f2- || true)"
-CONTROL_URL="$(grep -m1 '^SCOREBOARD_CONTROL_URL=' "${ENV_FILE}" | cut -d= -f2- || true)"
-PORT_VALUE="$(grep -m1 '^SCOREBOARD_PORT=' "${ENV_FILE}" | cut -d= -f2- || true)"
+echo "ScoreHLS local server installed."
+DISPLAY_URL="$(grep -m1 '^SCOREHLS_DISPLAY_URL=' "${ENV_FILE}" | cut -d= -f2- || true)"
+CONTROL_URL="$(grep -m1 '^SCOREHLS_CONTROL_URL=' "${ENV_FILE}" | cut -d= -f2- || true)"
+PORT_VALUE="$(grep -m1 '^SCOREHLS_PORT=' "${ENV_FILE}" | cut -d= -f2- || true)"
 DISPLAY_URL="${DISPLAY_URL:-http://127.0.0.1:5050/display}"
 CONTROL_URL="${CONTROL_URL:-http://127.0.0.1:5050/control}"
 PORT_VALUE="${PORT_VALUE:-5050}"

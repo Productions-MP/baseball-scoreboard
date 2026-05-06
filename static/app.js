@@ -1,23 +1,46 @@
-(function bootstrapScoreboardCore() {
-  const FALLBACK_SCOREBOARD_DESIGNS = [
+(function bootstrapScoreHLSCore() {
+  const FALLBACK_SPORTS = [
     {
-      id: "baseball-v1",
-      label: "Baseball v1",
-      width: 768,
-      height: 192,
-      template: "display_partials/baseball_v1.html",
+      id: "baseball",
+      label: "Baseball",
+      default_template_id: "baseball-linescore-v2",
+      templates: [
+        {
+          id: "baseball-linescore-v1",
+          sport_id: "baseball",
+          label: "Linescore v1",
+          width: 768,
+          height: 192,
+          renderer: "baseball-linescore-v1",
+        },
+        {
+          id: "baseball-linescore-v2",
+          sport_id: "baseball",
+          label: "Linescore v2",
+          width: 768,
+          height: 192,
+          renderer: "baseball-linescore-v2",
+        },
+      ],
     },
     {
-      id: "baseball-v2",
-      label: "Baseball v2",
-      width: 768,
-      height: 192,
-      template: "display_partials/baseball_v2.html",
+      id: "football",
+      label: "Football",
+      default_template_id: "football-clock-v1",
+      templates: [
+        {
+          id: "football-clock-v1",
+          sport_id: "football",
+          label: "Clock v1",
+          width: 768,
+          height: 192,
+          renderer: "football-clock-v1",
+        },
+      ],
     },
   ];
 
-  const BASE_STATE = {
-    blackout: false,
+  const BASEBALL_DEFAULT_GAME = {
     inning: 1,
     half: "top",
     ball: 0,
@@ -27,11 +50,51 @@
     home_runs: Array(10).fill(0),
   };
 
-  function cloneDefaultState() {
-    return serializeState({
-      ...JSON.parse(JSON.stringify(BASE_STATE)),
-      design_id: getDefaultDesignId(),
-    });
+  const DEFAULT_PERIOD_SECONDS = 12 * 60;
+  const FOOTBALL_DEFAULT_GAME = {
+    quarter: 1,
+    clock_seconds: DEFAULT_PERIOD_SECONDS,
+    clock_running: false,
+    clock_updated_at: null,
+    guest_score: 0,
+    home_score: 0,
+  };
+  const TEAM_NAME_MAX_LENGTH = 16;
+  const DEFAULT_SETTINGS = {
+    guest_team_name: "Guest",
+    home_team_name: "Home",
+    period_seconds: DEFAULT_PERIOD_SECONDS,
+  };
+
+  function normalizeTeamName(value, fallback) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+
+      if (trimmed) {
+        return trimmed.slice(0, TEAM_NAME_MAX_LENGTH);
+      }
+    }
+
+    return fallback;
+  }
+
+  function normalizePeriodSeconds(value) {
+    const parsed = Number.parseInt(value, 10);
+    const seconds = Number.isFinite(parsed) ? parsed : DEFAULT_PERIOD_SECONDS;
+    return Math.max(60, Math.min(99 * 60, seconds));
+  }
+
+  function normalizeSettings(input) {
+    const source = input && typeof input === "object" ? input : {};
+    return {
+      guest_team_name: normalizeTeamName(source.guest_team_name, DEFAULT_SETTINGS.guest_team_name),
+      home_team_name: normalizeTeamName(source.home_team_name, DEFAULT_SETTINGS.home_team_name),
+      period_seconds: normalizePeriodSeconds(source.period_seconds),
+    };
+  }
+
+  function getConfig() {
+    return window.SCOREHLS_CONFIG || {};
   }
 
   function toInt(value, fallback) {
@@ -67,16 +130,16 @@
     return Boolean(fallback);
   }
 
-  function normalizeDesign(design, fallback) {
-    const baseDesign = fallback || FALLBACK_SCOREBOARD_DESIGNS[0];
-    const source = design || {};
-    const id = String(source.id || baseDesign.id).trim() || baseDesign.id;
-    const label = String(source.label || baseDesign.label).trim() || baseDesign.label;
-    const width = Math.max(1, toInt(source.width, baseDesign.width));
-    const height = Math.max(1, toInt(source.height, baseDesign.height));
+  function normalizeTemplate(template, fallback) {
+    const baseTemplate = fallback || FALLBACK_SPORTS[0].templates[0];
+    const source = template || {};
+    const id = String(source.id || baseTemplate.id).trim() || baseTemplate.id;
+    const label = String(source.label || baseTemplate.label).trim() || baseTemplate.label;
+    const width = Math.max(1, toInt(source.width, baseTemplate.width));
+    const height = Math.max(1, toInt(source.height, baseTemplate.height));
 
     return {
-      ...baseDesign,
+      ...baseTemplate,
       ...source,
       id: id,
       label: label,
@@ -85,45 +148,103 @@
     };
   }
 
-  function getScoreboardDesigns() {
-    const config = getConfig();
-    const configuredDesigns =
-      Array.isArray(config.designs) && config.designs.length > 0 ? config.designs : FALLBACK_SCOREBOARD_DESIGNS;
+  function normalizeSport(sport, fallback) {
+    const baseSport = fallback || FALLBACK_SPORTS[0];
+    const source = sport || {};
+    const templates = Array.isArray(source.templates) && source.templates.length > 0 ? source.templates : baseSport.templates;
+    const normalizedTemplates = templates.map(function mapTemplate(template, index) {
+      return normalizeTemplate(template, baseSport.templates[index] || baseSport.templates[0]);
+    });
+    const defaultTemplateId = String(source.default_template_id || source.defaultTemplateId || "").trim();
 
-    return configuredDesigns.map(function mapDesign(design, index) {
-      const fallback = FALLBACK_SCOREBOARD_DESIGNS[index] || FALLBACK_SCOREBOARD_DESIGNS[0];
-      return normalizeDesign(design, fallback);
+    return {
+      ...baseSport,
+      ...source,
+      id: String(source.id || baseSport.id).trim() || baseSport.id,
+      label: String(source.label || baseSport.label).trim() || baseSport.label,
+      default_template_id:
+        normalizedTemplates.some(function hasTemplate(template) {
+          return template.id === defaultTemplateId;
+        })
+          ? defaultTemplateId
+          : normalizedTemplates[0].id,
+      templates: normalizedTemplates,
+    };
+  }
+
+  function getSports() {
+    const config = getConfig();
+    const configuredSports =
+      Array.isArray(config.sports) && config.sports.length > 0 ? config.sports : FALLBACK_SPORTS;
+
+    return configuredSports.map(function mapSport(sport, index) {
+      return normalizeSport(sport, FALLBACK_SPORTS[index] || FALLBACK_SPORTS[0]);
     });
   }
 
-  function normalizeDesignId(value) {
+  function normalizeSportId(value) {
     const candidate = String(value || "").trim();
-    const designs = getScoreboardDesigns();
-    const match = designs.find(function findDesign(design) {
-      return design.id === candidate;
+    const sports = getSports();
+    const match = sports.find(function findSport(sport) {
+      return sport.id === candidate;
     });
 
-    return match ? match.id : designs[0].id;
+    return match ? match.id : sports[0].id;
   }
 
-  function getDefaultDesignId() {
-    const config = getConfig();
-    return normalizeDesignId(config.defaultDesignId || (config.activeDesign && config.activeDesign.id));
+  function getSportById(value) {
+    const sports = getSports();
+    const sportId = normalizeSportId(value);
+    return (
+      sports.find(function findSport(sport) {
+        return sport.id === sportId;
+      }) || sports[0]
+    );
   }
 
-  function getDesignById(value) {
-    const designs = getScoreboardDesigns();
-    const designId = normalizeDesignId(value);
-    const match = designs.find(function findDesign(design) {
-      return design.id === designId;
+  function getTemplatesForSport(sportId) {
+    return getSportById(sportId).templates;
+  }
+
+  function normalizeTemplateId(value, sportId) {
+    const sport = getSportById(sportId);
+    const candidate = String(value || "").trim();
+    const match = sport.templates.find(function findTemplate(template) {
+      return template.id === candidate;
     });
 
-    return match || designs[0];
+    return match ? match.id : sport.default_template_id;
   }
 
-  function getActiveDesign() {
+  function getTemplateById(value, sportId) {
+    const sport = getSportById(sportId);
+    const templateId = normalizeTemplateId(value, sport.id);
+    return (
+      sport.templates.find(function findTemplate(template) {
+        return template.id === templateId;
+      }) || sport.templates[0]
+    );
+  }
+
+  function getDefaultSportId() {
     const config = getConfig();
-    return getDesignById((config.activeDesign && config.activeDesign.id) || (config.initialState && config.initialState.design_id));
+    return normalizeSportId(config.defaultSportId || (config.initialState && config.initialState.sport_id));
+  }
+
+  function getDefaultTemplateId(sportId) {
+    const config = getConfig();
+    const normalizedSportId = normalizeSportId(sportId || getDefaultSportId());
+    return normalizeTemplateId(
+      config.defaultTemplateId || (config.activeTemplate && config.activeTemplate.id),
+      normalizedSportId
+    );
+  }
+
+  function getActiveTemplate() {
+    const config = getConfig();
+    const initialState = config.initialState || {};
+    const sportId = normalizeSportId(initialState.sport_id || (config.activeTemplate && config.activeTemplate.sport_id));
+    return getTemplateById((config.activeTemplate && config.activeTemplate.id) || initialState.template_id, sportId);
   }
 
   function normalizeRuns(value) {
@@ -133,12 +254,9 @@
     });
   }
 
-  function normalizeState(input) {
+  function normalizeBaseballGame(input) {
     const source = input || {};
-
     return {
-      design_id: normalizeDesignId(source.design_id ?? source.scoreboard_design_id),
-      blackout: normalizeBoolean(source.blackout, false),
       inning: clamp(toInt(source.inning, 1), 1, 10),
       half: source.half === "bottom" ? "bottom" : "top",
       ball: clamp(toInt(source.ball ?? source.balls, 0), 0, 3),
@@ -149,26 +267,125 @@
     };
   }
 
+  function normalizeFootballGame(input) {
+    const source = input || {};
+    const updatedAtRaw = source.clock_updated_at;
+    const updatedAt = typeof updatedAtRaw === "string" && updatedAtRaw.trim() ? updatedAtRaw : null;
+    return {
+      quarter: clamp(toInt(source.quarter, 1), 1, 4),
+      clock_seconds: Math.max(0, toInt(source.clock_seconds, 0)),
+      clock_running: normalizeBoolean(source.clock_running, false),
+      clock_updated_at: updatedAt,
+      guest_score: Math.max(0, toInt(source.guest_score, 0)),
+      home_score: Math.max(0, toInt(source.home_score, 0)),
+    };
+  }
+
+  function defaultGameForSport(sportId) {
+    const normalized = normalizeSportId(sportId);
+
+    if (normalized === "baseball") {
+      return JSON.parse(JSON.stringify(BASEBALL_DEFAULT_GAME));
+    }
+
+    if (normalized === "football") {
+      return JSON.parse(JSON.stringify(FOOTBALL_DEFAULT_GAME));
+    }
+
+    return {};
+  }
+
+  function normalizeGameForSport(sportId, input) {
+    const normalized = normalizeSportId(sportId);
+
+    if (normalized === "baseball") {
+      return normalizeBaseballGame(input);
+    }
+
+    if (normalized === "football") {
+      return normalizeFootballGame(input);
+    }
+
+    return input && typeof input === "object" ? { ...input } : {};
+  }
+
+  function deriveGameForSport(sportId, game) {
+    const normalized = normalizeSportId(sportId);
+
+    if (normalized === "baseball") {
+      const normalizedGame = normalizeBaseballGame(game);
+      return {
+        ...normalizedGame,
+        guest_total: normalizedGame.guest_runs.reduce(function add(total, value) {
+          return total + value;
+        }, 0),
+        home_total: normalizedGame.home_runs.reduce(function add(total, value) {
+          return total + value;
+        }, 0),
+      };
+    }
+
+    if (normalized === "football") {
+      return normalizeFootballGame(game);
+    }
+
+    return game && typeof game === "object" ? { ...game } : {};
+  }
+
+  function normalizeState(input) {
+    const source = input || {};
+    const sportId = normalizeSportId(source.sport_id);
+    const sourceGame = source.game && typeof source.game === "object" ? source.game : defaultGameForSport(sportId);
+    const mergedGameSource = sportId === "baseball" ? { ...sourceGame, ...source } : sourceGame;
+    const templateId = normalizeTemplateId(source.template_id, sportId);
+    const game = normalizeGameForSport(sportId, mergedGameSource);
+    const derivedGame = deriveGameForSport(sportId, game);
+    const settings = normalizeSettings(source.settings);
+
+    return {
+      schema_version: 1,
+      sport_id: sportId,
+      template_id: templateId,
+      blackout: normalizeBoolean(source.blackout, false),
+      game: game,
+      settings: settings,
+      ...derivedGame,
+    };
+  }
+
   function serializeState(state) {
     return normalizeState(state);
   }
 
-  function sumRuns(runs) {
-    return (runs || []).reduce(function add(total, value) {
-      return total + value;
-    }, 0);
+  function cloneDefaultState(sportId) {
+    const normalizedSportId = normalizeSportId(sportId || getDefaultSportId());
+    return serializeState({
+      sport_id: normalizedSportId,
+      template_id: getDefaultTemplateId(normalizedSportId),
+      blackout: false,
+      game: defaultGameForSport(normalizedSportId),
+      settings: { ...DEFAULT_SETTINGS },
+    });
   }
 
   function withDerived(state) {
     const normalized = normalizeState(state);
+    const sport = getSportById(normalized.sport_id);
+    const template = getTemplateById(normalized.template_id, normalized.sport_id);
+    const derivedGame = deriveGameForSport(normalized.sport_id, normalized.game);
 
     return {
       ...normalized,
-      design: getDesignById(normalized.design_id),
-      guest_total: sumRuns(normalized.guest_runs),
-      home_total: sumRuns(normalized.home_runs),
+      ...derivedGame,
+      game: derivedGame,
+      sport: {
+        id: sport.id,
+        label: sport.label,
+        default_template_id: sport.default_template_id,
+      },
+      template: template,
       updated_at: state && state.updated_at ? state.updated_at : null,
-      source: state && state.source ? state.source : "scoreboard",
+      source: state && state.source ? state.source : "scorehls",
     };
   }
 
@@ -184,10 +401,7 @@
     const manualBlackout = normalizeBoolean(source.blackout, false);
     const idleBlackout = blackoutIdleSeconds > 0 && idleMs >= blackoutIdleSeconds * 1000;
     const blackout = manualBlackout || idleBlackout;
-    const screensaver =
-      screensaverIdleSeconds > 0 &&
-      idleMs >= screensaverIdleSeconds * 1000 &&
-      !blackout;
+    const screensaver = screensaverIdleSeconds > 0 && idleMs >= screensaverIdleSeconds * 1000 && !blackout;
 
     return {
       updated_at: source.updated_at || null,
@@ -216,13 +430,9 @@
     }
   }
 
-  function getConfig() {
-    return window.SCOREBOARD_CONFIG || {};
-  }
-
   function getControlKey() {
     const config = getConfig();
-    const storageName = config.keyStorageName || "scoreboard-control-key";
+    const storageName = config.keyStorageName || "scorehls-control-key";
 
     try {
       return window.localStorage.getItem(storageName) || "";
@@ -233,7 +443,7 @@
 
   function setControlKey(value) {
     const config = getConfig();
-    const storageName = config.keyStorageName || "scoreboard-control-key";
+    const storageName = config.keyStorageName || "scorehls-control-key";
 
     try {
       if (value) {
@@ -261,7 +471,7 @@
       const controlKey = getControlKey();
 
       if (controlKey) {
-        headers["x-scoreboard-key"] = controlKey;
+        headers["x-scorehls-key"] = controlKey;
       }
     }
 
@@ -326,13 +536,7 @@
   }
 
   function fetchDisplayIdleSettings() {
-    return requestJson(
-      getConfig().endpoints.getDisplayIdleSettings,
-      {
-        method: "GET",
-      },
-      true
-    );
+    return requestJson(getConfig().endpoints.getDisplayIdleSettings, { method: "GET" }, true);
   }
 
   function updateDisplayIdleSettings(settings) {
@@ -362,7 +566,7 @@
   }
 
   function buildBackupFilename() {
-    return "scoreboard-backup-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
+    return "scorehls-backup-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json";
   }
 
   function buildWebSocketUrl() {
@@ -491,28 +695,30 @@
     };
   }
 
-  window.ScoreboardCore = {
+  window.ScoreHLSCore = {
     buildBackupFilename: buildBackupFilename,
     buildWebSocketUrl: buildWebSocketUrl,
     cloneDefaultState: cloneDefaultState,
     createRealtimeChannel: createRealtimeChannel,
     fetchState: fetchState,
-    getActiveDesign: getActiveDesign,
-    formatTimestamp: formatTimestamp,
-    getConfig: getConfig,
-    getControlKey: getControlKey,
-    getDesignById: getDesignById,
-    getScoreboardDesigns: getScoreboardDesigns,
     fetchDisplayIdleSettings: fetchDisplayIdleSettings,
     fetchWifiSettings: fetchWifiSettings,
+    formatTimestamp: formatTimestamp,
+    getActiveTemplate: getActiveTemplate,
+    getConfig: getConfig,
+    getControlKey: getControlKey,
+    getSportById: getSportById,
+    getSports: getSports,
+    getTemplateById: getTemplateById,
+    getTemplatesForSport: getTemplatesForSport,
+    getIdleStatus: getIdleStatus,
     resetState: resetState,
     runSystemAction: runSystemAction,
     serializeState: serializeState,
     setControlKey: setControlKey,
     updateDisplayIdleSettings: updateDisplayIdleSettings,
-    updateWifiSettings: updateWifiSettings,
     updateState: updateState,
-    getIdleStatus: getIdleStatus,
+    updateWifiSettings: updateWifiSettings,
     withDerived: withDerived,
   };
 })();

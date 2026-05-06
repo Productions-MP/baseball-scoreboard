@@ -1,8 +1,8 @@
 {
   "id": "/control",
-  "name": "Baseball Scoreboard Control",
-  "short_name": "Score Control",
-  "description": "Touch controller for the baseball scoreboard.",
+  "name": "ScoreHLS Control",
+  "short_name": "ScoreHLS Control",
+  "description": "Touch controller for ScoreHLS.",
   "start_url": "/control",
   "scope": "/control",
   "display": "standalone",

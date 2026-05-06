@@ -1,4 +1,4 @@
-<main class="scoreboard-display scoreboard-display-baseball-v1" data-design-id="baseball-v1">
+<main class="scoreboard-display scoreboard-display-baseball-v1" data-template-id="baseball-linescore-v1">
   <section class="linescore-panel">
     <div class="linescore-grid">
       <div class="active-inning-highlight" id="active-inning-highlight" aria-hidden="true"></div>
@@ -18,7 +18,7 @@
       <div class="cell inning-head total-head">R</div>
 
       <div class="cell label-cell team-cell">
-        <span class="team-label">GUEST</span>
+        <span class="team-label" id="guest-team-label">GUEST</span>
         <span class="team-arrow team-arrow-up" id="guest-arrow" aria-hidden="true"></span>
       </div>
       <div class="cell score-cell" id="guest-run-0">0</div>
@@ -34,7 +34,7 @@
       <div class="cell score-cell total-cell" id="guest-total">0</div>
 
       <div class="cell label-cell team-cell">
-        <span class="team-label">HOME</span>
+        <span class="team-label" id="home-team-label">HOME</span>
         <span class="team-arrow team-arrow-down" id="home-arrow" aria-hidden="true"></span>
       </div>
       <div class="cell score-cell" id="home-run-0">0</div>

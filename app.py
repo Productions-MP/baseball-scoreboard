@@ -2,25 +2,25 @@ import hmac
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
 from flask_sock import Sock
 from simple_websocket import ConnectionClosed
-from shared.scoreboard_core import apply_action, build_reset_state, clone_default_state, merge_state, normalize_state, with_derived
-from shared.scoreboard_designs import DEFAULT_SCOREBOARD_DESIGN_ID, get_scoreboard_design, list_scoreboard_designs
+from shared.scorehls_core import apply_action, build_reset_state, clone_default_state, merge_state, normalize_state, with_derived
+from shared.scorehls_registry import DEFAULT_SPORT_ID, get_template, list_sports, list_templates
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILES = (
-    os.path.join(BASE_DIR, "pi-fallback", "pi.env"),
-    os.path.join(BASE_DIR, "pi.env"),
     os.path.join(BASE_DIR, ".env"),
 )
-MODE_NAME = "scoreboard"
-LOGGER = logging.getLogger("scoreboard-web")
+MODE_NAME = "scorehls"
+LOGGER = logging.getLogger("scorehls-web")
 
 STATE_LOCK = threading.Lock()
 CLIENTS_LOCK = threading.Lock()
@@ -28,26 +28,31 @@ SEND_LOCK = threading.Lock()
 WS_CLIENTS = set()
 
 SYSTEM_ACTIONS = {
-    "restart-scoreboard": {
-        "command": ["systemctl", "restart", "scoreboard-local.service", "scoreboard-display.service"],
-        "message": "Restart Application requested. The controller may disconnect while the scoreboard restarts.",
+    "restart-scorehls": {
+        "command": ["systemctl", "restart", "scorehls-local.service", "scorehls-display.service"],
+        "message": "Restart Application requested. The controller may disconnect while ScoreHLS restarts.",
     },
     "reboot-pi": {
         "command": ["shutdown", "-r", "now"],
-        "message": "Reboot Scoreboard requested. The Pi will disconnect while it restarts.",
+        "message": "Reboot ScoreHLS requested. The Pi will disconnect while it restarts.",
     },
     "shutdown-pi": {
         "command": ["shutdown", "now"],
-        "message": "Shutdown Scoreboard requested. The Pi will power off shortly.",
+        "message": "Shutdown ScoreHLS requested. The Pi will power off shortly.",
     },
 }
 WIFI_SETTING_DEFAULTS = {
-    "SCOREBOARD_WIFI_ALLOW_FALLBACK": "1",
-    "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": "180",
+    "SCOREHLS_WIFI_ALLOW_FALLBACK": "1",
+    "SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": "180",
 }
 DISPLAY_IDLE_SETTING_DEFAULTS = {
-    "SCOREBOARD_SCREENSAVER_IDLE_SECONDS": "900",
-    "SCOREBOARD_BLACKOUT_IDLE_SECONDS": "1800",
+    "SCOREHLS_SCREENSAVER_IDLE_SECONDS": "900",
+    "SCOREHLS_BLACKOUT_IDLE_SECONDS": "1800",
+}
+DEBUG_SETTING_DEFAULTS = {
+    "SCOREHLS_DEBUG_SAMPLE_INTERVAL_SECONDS": "60",
+    "SCOREHLS_DEBUG_RETENTION_DAYS": "28",
+    "SCOREHLS_DEBUG_USB_RADIO_ID": "0bda:c811",
 }
 
 def load_env_file(path):
@@ -64,11 +69,8 @@ def load_env_file(path):
             os.environ.setdefault(key.strip(), value.strip())
 
 
-def env_value(primary_name, legacy_name=None, default=""):
+def env_value(primary_name, default=""):
     value = os.environ.get(primary_name)
-
-    if value is None and legacy_name:
-        value = os.environ.get(legacy_name)
 
     if value is None:
         return default
@@ -76,8 +78,8 @@ def env_value(primary_name, legacy_name=None, default=""):
     return value
 
 
-def int_env_value(primary_name, legacy_name=None, default=0):
-    raw_value = env_value(primary_name, legacy_name, str(default))
+def int_env_value(primary_name, default=0):
+    raw_value = env_value(primary_name, str(default))
 
     try:
         return int(str(raw_value).strip())
@@ -97,20 +99,35 @@ def strip_wrapping_quotes(value):
 for env_file in ENV_FILES:
     load_env_file(env_file)
 
-DEFAULT_STATE_FILE = os.path.join(BASE_DIR, "runtime", "scoreboard_state.json")
-LEGACY_STATE_FILE = os.path.join(BASE_DIR, "pi-fallback", "runtime", "scoreboard_state.json")
+DEFAULT_STATE_FILE = os.path.join(BASE_DIR, "runtime", "scorehls_state.json")
 
-STATE_FILE = env_value(
-    "SCOREBOARD_STATE_FILE",
-    "FALLBACK_STATE_FILE",
-    LEGACY_STATE_FILE if os.path.exists(LEGACY_STATE_FILE) and not os.path.exists(DEFAULT_STATE_FILE) else DEFAULT_STATE_FILE,
-)
-SCOREBOARD_HOST = env_value("SCOREBOARD_HOST", "FALLBACK_HOST", "0.0.0.0")
-SCOREBOARD_PORT = int_env_value("SCOREBOARD_PORT", "FALLBACK_PORT", 5050)
+STATE_FILE = env_value("SCOREHLS_STATE_FILE", DEFAULT_STATE_FILE)
+SCOREHLS_HOST = env_value("SCOREHLS_HOST", "0.0.0.0")
+SCOREHLS_PORT = int_env_value("SCOREHLS_PORT", 5050)
 SCHOOL_NAME = env_value("SCHOOL_NAME", default="Highlands Latin School")
+DEBUG_LOG_FILE = env_value("SCOREHLS_DEBUG_LOG_FILE", os.path.join(BASE_DIR, "runtime", "scorehls_system_debug.jsonl"))
+DEBUG_SAMPLE_INTERVAL_SECONDS = max(
+    10,
+    int_env_value(
+        "SCOREHLS_DEBUG_SAMPLE_INTERVAL_SECONDS",
+        int(DEBUG_SETTING_DEFAULTS["SCOREHLS_DEBUG_SAMPLE_INTERVAL_SECONDS"]),
+    ),
+)
+DEBUG_RETENTION_DAYS = max(
+    1,
+    int_env_value("SCOREHLS_DEBUG_RETENTION_DAYS", int(DEBUG_SETTING_DEFAULTS["SCOREHLS_DEBUG_RETENTION_DAYS"])),
+)
+DEBUG_USB_RADIO_ID = env_value(
+    "SCOREHLS_DEBUG_USB_RADIO_ID",
+    DEBUG_SETTING_DEFAULTS["SCOREHLS_DEBUG_USB_RADIO_ID"],
+).strip().lower()
 
 app = Flask(__name__)
 sock = Sock(app)
+DEBUG_LOG_LOCK = threading.Lock()
+DEBUG_THREAD_LOCK = threading.Lock()
+DEBUG_SAMPLER_STARTED = False
+DEBUG_LAST_PRUNE_AT = None
 
 
 def stamp_state(state):
@@ -127,6 +144,298 @@ def now_utc():
 
 def isoformat_utc(value):
     return value.isoformat().replace("+00:00", "Z")
+
+
+def parse_iso_datetime(value):
+    if not value:
+        return None
+
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def run_debug_command(args, timeout=2):
+    if os.name != "posix":
+        return {"ok": False, "output": "", "error": "Pi hardware commands are unavailable on this host."}
+
+    executable = shutil.which(args[0])
+
+    if not executable:
+        return {"ok": False, "output": "", "error": f"{args[0]} is not available."}
+
+    try:
+        completed = subprocess.run(
+            [executable, *args[1:]],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "output": "", "error": f"{args[0]} timed out."}
+    except OSError as error:
+        return {"ok": False, "output": "", "error": str(error)}
+
+    return {
+        "ok": completed.returncode == 0,
+        "output": completed.stdout.strip(),
+        "error": completed.stderr.strip(),
+    }
+
+
+def parse_throttled_output(output):
+    match = re.search(r"throttled=(0x[0-9a-fA-F]+|\d+)", output or "")
+
+    if not match:
+        return {
+            "raw": "",
+            "value": None,
+            "undervoltage_now": False,
+            "frequency_capped_now": False,
+            "throttled_now": False,
+            "soft_temperature_limit_now": False,
+            "undervoltage_seen": False,
+            "frequency_capped_seen": False,
+            "throttled_seen": False,
+            "soft_temperature_limit_seen": False,
+        }
+
+    raw_value = match.group(1)
+    value = int(raw_value, 16) if raw_value.lower().startswith("0x") else int(raw_value)
+
+    return {
+        "raw": raw_value,
+        "value": value,
+        "undervoltage_now": bool(value & (1 << 0)),
+        "frequency_capped_now": bool(value & (1 << 1)),
+        "throttled_now": bool(value & (1 << 2)),
+        "soft_temperature_limit_now": bool(value & (1 << 3)),
+        "undervoltage_seen": bool(value & (1 << 16)),
+        "frequency_capped_seen": bool(value & (1 << 17)),
+        "throttled_seen": bool(value & (1 << 18)),
+        "soft_temperature_limit_seen": bool(value & (1 << 19)),
+    }
+
+
+def read_text_file(path):
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return ""
+
+
+def parse_iw_link_output(output):
+    text = output or ""
+    result = {
+        "connected": "Connected to " in text,
+        "ssid": "",
+        "signal_dbm": None,
+        "tx_bitrate": "",
+    }
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+
+        if line.startswith("SSID:"):
+            result["ssid"] = line.split(":", 1)[1].strip()
+        elif line.startswith("signal:"):
+            match = re.search(r"-?\d+", line)
+
+            if match:
+                result["signal_dbm"] = int(match.group(0))
+        elif line.startswith("tx bitrate:"):
+            result["tx_bitrate"] = line.split(":", 1)[1].strip()
+
+    return result
+
+
+def read_radio_status(name):
+    base_path = f"/sys/class/net/{name}"
+    present = os.path.exists(base_path)
+    operstate = read_text_file(os.path.join(base_path, "operstate")) if present else "missing"
+    carrier_raw = read_text_file(os.path.join(base_path, "carrier")) if present else ""
+    carrier = carrier_raw == "1"
+    flags = read_text_file(os.path.join(base_path, "flags")) if present else ""
+    link = parse_iw_link_output(run_debug_command(["iw", "dev", name, "link"]).get("output", "")) if present else {}
+
+    return {
+        "present": present,
+        "operstate": operstate or "unknown",
+        "carrier": carrier,
+        "flags": flags,
+        "connected": bool(link.get("connected")),
+        "ssid": link.get("ssid", ""),
+        "signal_dbm": link.get("signal_dbm"),
+        "tx_bitrate": link.get("tx_bitrate", ""),
+        "online": present and (carrier or bool(link.get("connected")) or operstate == "up"),
+    }
+
+
+def parse_usb_devices(output):
+    devices = []
+
+    for raw_line in (output or "").splitlines():
+        match = re.search(r"ID\s+([0-9a-fA-F]{4}:[0-9a-fA-F]{4})\s+(.+)$", raw_line)
+
+        if not match:
+            continue
+
+        devices.append({"id": match.group(1).lower(), "label": match.group(2).strip()})
+
+    return devices
+
+
+def collect_debug_sample():
+    sampled_at = isoformat_utc(now_utc())
+    throttled_result = run_debug_command(["vcgencmd", "get_throttled"])
+    lsusb_result = run_debug_command(["lsusb"])
+    usb_devices = parse_usb_devices(lsusb_result.get("output", ""))
+    usb_radio_present = any(device["id"] == DEBUG_USB_RADIO_ID for device in usb_devices)
+    radios = {
+        "wlan0": read_radio_status("wlan0"),
+        "wlan1": read_radio_status("wlan1"),
+    }
+    power = parse_throttled_output(throttled_result.get("output", ""))
+    alerts = []
+
+    if power["undervoltage_now"]:
+        alerts.append("undervoltage_now")
+
+    if power["undervoltage_seen"]:
+        alerts.append("undervoltage_seen")
+
+    if not usb_radio_present:
+        alerts.append("usb_radio_missing")
+
+    if not radios["wlan1"]["online"]:
+        alerts.append("wlan1_offline")
+
+    if not radios["wlan0"]["online"] and not radios["wlan1"]["online"]:
+        alerts.append("all_wifi_offline")
+
+    external_power_likely_lost = (
+        not usb_radio_present or not radios["wlan1"]["present"] or not radios["wlan1"]["online"]
+    ) and radios["wlan0"]["online"]
+
+    if external_power_likely_lost:
+        alerts.append("external_power_likely_lost")
+
+    return {
+        "sampled_at": sampled_at,
+        "power": {
+            **power,
+            "command_ok": throttled_result["ok"],
+            "error": throttled_result.get("error", ""),
+        },
+        "usb": {
+            "command_ok": lsusb_result["ok"],
+            "error": lsusb_result.get("error", ""),
+            "radio_id": DEBUG_USB_RADIO_ID,
+            "radio_present": usb_radio_present,
+            "devices": usb_devices,
+        },
+        "radios": radios,
+        "status": {
+            "wlan0_online": radios["wlan0"]["online"],
+            "wlan1_online": radios["wlan1"]["online"],
+            "usb_radio_present": usb_radio_present,
+            "undervoltage_now": power["undervoltage_now"],
+            "undervoltage_seen": power["undervoltage_seen"],
+            "external_power_likely_lost": external_power_likely_lost,
+        },
+        "alerts": sorted(set(alerts)),
+    }
+
+
+def prune_debug_log_locked(cutoff):
+    if not os.path.exists(DEBUG_LOG_FILE):
+        return
+
+    kept_lines = []
+
+    with open(DEBUG_LOG_FILE, "r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            try:
+                entry = json.loads(raw_line)
+            except json.JSONDecodeError:
+                continue
+
+            sampled_at = parse_iso_datetime(entry.get("sampled_at"))
+
+            if sampled_at and sampled_at >= cutoff:
+                kept_lines.append(json.dumps(entry, separators=(",", ":")) + "\n")
+
+    temp_path = DEBUG_LOG_FILE + ".tmp"
+
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        handle.writelines(kept_lines)
+
+    os.replace(temp_path, DEBUG_LOG_FILE)
+
+
+def append_debug_sample(sample):
+    global DEBUG_LAST_PRUNE_AT
+
+    os.makedirs(os.path.dirname(DEBUG_LOG_FILE), exist_ok=True)
+    cutoff = now_utc() - timedelta(days=DEBUG_RETENTION_DAYS)
+
+    with DEBUG_LOG_LOCK:
+        with open(DEBUG_LOG_FILE, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(sample, separators=(",", ":")) + "\n")
+
+        if DEBUG_LAST_PRUNE_AT is None or now_utc() - DEBUG_LAST_PRUNE_AT > timedelta(hours=6):
+            prune_debug_log_locked(cutoff)
+            DEBUG_LAST_PRUNE_AT = now_utc()
+
+
+def read_debug_samples(hours=None):
+    cutoff = now_utc() - timedelta(hours=hours if hours is not None else DEBUG_RETENTION_DAYS * 24)
+    samples = []
+
+    with DEBUG_LOG_LOCK:
+        if not os.path.exists(DEBUG_LOG_FILE):
+            return samples
+
+        with open(DEBUG_LOG_FILE, "r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                try:
+                    entry = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+
+                sampled_at = parse_iso_datetime(entry.get("sampled_at"))
+
+                if sampled_at and sampled_at >= cutoff:
+                    samples.append(entry)
+
+    return samples
+
+
+def debug_sampler_loop():
+    while True:
+        try:
+            append_debug_sample(collect_debug_sample())
+        except Exception:
+            LOGGER.exception("System debug sampler failed.")
+
+        time.sleep(DEBUG_SAMPLE_INTERVAL_SECONDS)
+
+
+def start_debug_sampler():
+    global DEBUG_SAMPLER_STARTED
+
+    with DEBUG_THREAD_LOCK:
+        if DEBUG_SAMPLER_STARTED:
+            return
+
+        DEBUG_SAMPLER_STARTED = True
+
+    sampler = threading.Thread(target=debug_sampler_loop, name="scorehls-system-debug", daemon=True)
+    sampler.start()
 
 
 def atomic_write_state(payload):
@@ -172,7 +481,7 @@ def write_state(next_state):
 
 
 def read_control_key():
-    return env_value("SCOREBOARD_CONTROL_KEY", "FALLBACK_CONTROL_KEY", "").strip()
+    return env_value("SCOREHLS_CONTROL_KEY", "").strip()
 
 
 def control_key_is_valid(provided_key):
@@ -190,7 +499,7 @@ def control_key_error():
 
 
 def require_control_key():
-    if control_key_is_valid(request.headers.get("x-scoreboard-key", "")):
+    if control_key_is_valid(request.headers.get("x-scorehls-key", "")):
         return None
 
     return control_key_error()
@@ -202,6 +511,7 @@ def api_payload(state):
         "ok": True,
         "mode": MODE_NAME,
         "updated_at": state.get("updated_at"),
+        "sports": list_sports(),
         "screensaver_idle_seconds": display_idle_settings["screensaver_idle_seconds"],
         "blackout_idle_seconds": display_idle_settings["blackout_idle_seconds"],
         "state": with_derived(state, default_source=MODE_NAME),
@@ -329,21 +639,21 @@ def read_wifi_settings():
     env_path = resolve_env_file_path()
     assignments = read_env_assignments(env_path)
     allow_fallback_raw = assignments.get(
-        "SCOREBOARD_WIFI_ALLOW_FALLBACK",
-        os.environ.get("SCOREBOARD_WIFI_ALLOW_FALLBACK", WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_ALLOW_FALLBACK"]),
+        "SCOREHLS_WIFI_ALLOW_FALLBACK",
+        os.environ.get("SCOREHLS_WIFI_ALLOW_FALLBACK", WIFI_SETTING_DEFAULTS["SCOREHLS_WIFI_ALLOW_FALLBACK"]),
     )
     grace_raw = assignments.get(
-        "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+        "SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
         os.environ.get(
-            "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
-            WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"],
+            "SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS",
+            WIFI_SETTING_DEFAULTS["SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"],
         ),
     )
 
     try:
-        grace_seconds = int(str(grace_raw).strip() or WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"])
+        grace_seconds = int(str(grace_raw).strip() or WIFI_SETTING_DEFAULTS["SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"])
     except ValueError:
-        grace_seconds = int(WIFI_SETTING_DEFAULTS["SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"])
+        grace_seconds = int(WIFI_SETTING_DEFAULTS["SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS"])
 
     return {
         "env_file": env_path,
@@ -356,33 +666,33 @@ def read_display_idle_settings():
     env_path = resolve_env_file_path()
     assignments = read_env_assignments(env_path)
     screensaver_raw = assignments.get(
-        "SCOREBOARD_SCREENSAVER_IDLE_SECONDS",
+        "SCOREHLS_SCREENSAVER_IDLE_SECONDS",
         os.environ.get(
-            "SCOREBOARD_SCREENSAVER_IDLE_SECONDS",
-            DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_SCREENSAVER_IDLE_SECONDS"],
+            "SCOREHLS_SCREENSAVER_IDLE_SECONDS",
+            DISPLAY_IDLE_SETTING_DEFAULTS["SCOREHLS_SCREENSAVER_IDLE_SECONDS"],
         ),
     )
     blackout_raw = assignments.get(
-        "SCOREBOARD_BLACKOUT_IDLE_SECONDS",
+        "SCOREHLS_BLACKOUT_IDLE_SECONDS",
         os.environ.get(
-            "SCOREBOARD_BLACKOUT_IDLE_SECONDS",
-            DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_BLACKOUT_IDLE_SECONDS"],
+            "SCOREHLS_BLACKOUT_IDLE_SECONDS",
+            DISPLAY_IDLE_SETTING_DEFAULTS["SCOREHLS_BLACKOUT_IDLE_SECONDS"],
         ),
     )
 
     try:
         screensaver_seconds = int(
-            str(screensaver_raw).strip() or DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_SCREENSAVER_IDLE_SECONDS"]
+            str(screensaver_raw).strip() or DISPLAY_IDLE_SETTING_DEFAULTS["SCOREHLS_SCREENSAVER_IDLE_SECONDS"]
         )
     except ValueError:
-        screensaver_seconds = int(DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_SCREENSAVER_IDLE_SECONDS"])
+        screensaver_seconds = int(DISPLAY_IDLE_SETTING_DEFAULTS["SCOREHLS_SCREENSAVER_IDLE_SECONDS"])
 
     try:
         blackout_seconds = int(
-            str(blackout_raw).strip() or DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_BLACKOUT_IDLE_SECONDS"]
+            str(blackout_raw).strip() or DISPLAY_IDLE_SETTING_DEFAULTS["SCOREHLS_BLACKOUT_IDLE_SECONDS"]
         )
     except ValueError:
-        blackout_seconds = int(DISPLAY_IDLE_SETTING_DEFAULTS["SCOREBOARD_BLACKOUT_IDLE_SECONDS"])
+        blackout_seconds = int(DISPLAY_IDLE_SETTING_DEFAULTS["SCOREHLS_BLACKOUT_IDLE_SECONDS"])
 
     return {
         "env_file": env_path,
@@ -414,8 +724,8 @@ def parse_wifi_settings_payload(payload):
         raise ValueError("Recovery grace must be 86400 seconds or less.")
 
     return {
-        "SCOREBOARD_WIFI_ALLOW_FALLBACK": "1" if fallback_mode == "allow-fallback" else "0",
-        "SCOREBOARD_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": str(grace_seconds),
+        "SCOREHLS_WIFI_ALLOW_FALLBACK": "1" if fallback_mode == "allow-fallback" else "0",
+        "SCOREHLS_WIFI_PRIMARY_RECOVERY_GRACE_SECONDS": str(grace_seconds),
     }
 
 
@@ -436,8 +746,8 @@ def parse_display_idle_settings_payload(payload):
         raise ValueError("Display idle settings must be 86400 seconds or less.")
 
     return {
-        "SCOREBOARD_SCREENSAVER_IDLE_SECONDS": str(screensaver_seconds),
-        "SCOREBOARD_BLACKOUT_IDLE_SECONDS": str(blackout_seconds),
+        "SCOREHLS_SCREENSAVER_IDLE_SECONDS": str(screensaver_seconds),
+        "SCOREHLS_BLACKOUT_IDLE_SECONDS": str(blackout_seconds),
     }
 
 
@@ -610,15 +920,15 @@ def root():
 @app.get("/display")
 def display():
     current_state = read_state()
-    active_design = get_scoreboard_design(current_state.get("design_id"))
+    active_template = get_template(current_state.get("template_id"), current_state.get("sport_id"))
     display_idle_settings = read_display_idle_settings()
     return render_template(
         "display.html",
         school_name=SCHOOL_NAME,
-        scoreboard_designs=list_scoreboard_designs(),
-        default_design_id=DEFAULT_SCOREBOARD_DESIGN_ID,
-        active_design=active_design,
-        display_template=active_design["template"],
+        sports=list_sports(),
+        default_sport_id=DEFAULT_SPORT_ID,
+        active_template=active_template,
+        display_template=active_template["template"],
         initial_state=with_derived(current_state, default_source=MODE_NAME),
         screensaver_idle_seconds=display_idle_settings["screensaver_idle_seconds"],
         blackout_idle_seconds=display_idle_settings["blackout_idle_seconds"],
@@ -632,9 +942,21 @@ def control():
         "control.html",
         school_name=SCHOOL_NAME,
         require_key=bool(read_control_key()),
-        scoreboard_designs=list_scoreboard_designs(),
-        default_design_id=DEFAULT_SCOREBOARD_DESIGN_ID,
+        sports=list_sports(),
+        default_sport_id=DEFAULT_SPORT_ID,
+        default_template_id=get_template(None, DEFAULT_SPORT_ID)["id"],
         initial_state=with_derived(current_state, default_source=MODE_NAME),
+    )
+
+
+@app.get("/debug")
+def debug():
+    return render_template(
+        "debug.html",
+        school_name=SCHOOL_NAME,
+        sample_interval_seconds=DEBUG_SAMPLE_INTERVAL_SECONDS,
+        retention_days=DEBUG_RETENTION_DAYS,
+        usb_radio_id=DEBUG_USB_RADIO_ID,
     )
 
 
@@ -651,6 +973,31 @@ def public_asset(filename):
 @app.get("/health")
 def health():
     return jsonify({"ok": True, "websocket_clients": len(WS_CLIENTS), "mode": MODE_NAME})
+
+
+@app.get("/api/debug/system")
+def system_debug_api():
+    raw_hours = request.args.get("hours", "")
+
+    try:
+        hours = int(raw_hours) if raw_hours else DEBUG_RETENTION_DAYS * 24
+    except ValueError:
+        hours = DEBUG_RETENTION_DAYS * 24
+
+    hours = max(1, min(DEBUG_RETENTION_DAYS * 24, hours))
+    samples = read_debug_samples(hours=hours)
+
+    return jsonify(
+        {
+            "ok": True,
+            "sample_interval_seconds": DEBUG_SAMPLE_INTERVAL_SECONDS,
+            "retention_days": DEBUG_RETENTION_DAYS,
+            "usb_radio_id": DEBUG_USB_RADIO_ID,
+            "sample_count": len(samples),
+            "latest": samples[-1] if samples else None,
+            "samples": samples,
+        }
+    )
 
 
 @app.get("/api/state")
@@ -829,7 +1176,7 @@ def update_display_idle_settings_api():
 
 
 @sock.route("/ws")
-def scoreboard_socket(ws):
+def scorehls_socket(ws):
     register_client(ws)
 
     try:
@@ -851,5 +1198,8 @@ def scoreboard_socket(ws):
         unregister_client(ws)
 
 
+start_debug_sampler()
+
+
 if __name__ == "__main__":
-    app.run(host=SCOREBOARD_HOST, port=SCOREBOARD_PORT, threaded=True)
+    app.run(host=SCOREHLS_HOST, port=SCOREHLS_PORT, threaded=True)

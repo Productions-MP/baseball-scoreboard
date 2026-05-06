@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <title>ScoreHLS Debug</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body class="control-page debug-page">
+    <main class="debug-shell">
+      <header class="debug-header">
+        <div>
+          <p class="section-label">{{ school_name }}</p>
+          <h1>System Debug</h1>
+        </div>
+        <a class="menu-button debug-control-link" href="/control">Control</a>
+      </header>
+
+      <section class="debug-status-grid" aria-label="Current system status">
+        <article class="debug-status-card" data-debug-status-card="power">
+          <p class="section-label">Power</p>
+          <strong id="debug-power-status">Waiting</strong>
+          <span id="debug-power-meta">--</span>
+        </article>
+        <article class="debug-status-card" data-debug-status-card="usb">
+          <p class="section-label">USB Radio</p>
+          <strong id="debug-usb-status">Waiting</strong>
+          <span id="debug-usb-meta">{{ usb_radio_id }}</span>
+        </article>
+        <article class="debug-status-card" data-debug-status-card="wlan1">
+          <p class="section-label">wlan1</p>
+          <strong id="debug-wlan1-status">Waiting</strong>
+          <span id="debug-wlan1-meta">--</span>
+        </article>
+        <article class="debug-status-card" data-debug-status-card="wlan0">
+          <p class="section-label">wlan0</p>
+          <strong id="debug-wlan0-status">Waiting</strong>
+          <span id="debug-wlan0-meta">--</span>
+        </article>
+      </section>
+
+      <section class="debug-panel">
+        <div class="debug-panel-header">
+          <div>
+            <p class="section-label">Timeline</p>
+            <h2 id="debug-range-title">Past 24 hours</h2>
+          </div>
+          <div class="debug-toolbar">
+            <select id="debug-range-select" class="select-input debug-range-select" aria-label="Timeline range">
+              <option value="1">1 hour</option>
+              <option value="6">6 hours</option>
+              <option value="24" selected>24 hours</option>
+              <option value="168">7 days</option>
+              <option value="672">28 days</option>
+            </select>
+            <button id="debug-refresh-button" class="action-button subtle-button" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="debug-chart-wrap">
+          <canvas id="debug-chart" class="debug-chart" width="1200" height="520"></canvas>
+        </div>
+        <div class="debug-legend" aria-label="Timeline legend">
+          <span><i class="debug-swatch debug-swatch-good"></i>Online</span>
+          <span><i class="debug-swatch debug-swatch-bad"></i>Offline</span>
+          <span><i class="debug-swatch debug-swatch-warn"></i>Voltage flag</span>
+        </div>
+      </section>
+
+      <section class="debug-grid-two">
+        <article class="debug-panel">
+          <div class="debug-panel-header">
+            <div>
+              <p class="section-label">Recent Events</p>
+              <h2 id="debug-event-count">0 changes</h2>
+            </div>
+          </div>
+          <ol class="debug-event-list" id="debug-event-list"></ol>
+        </article>
+
+        <article class="debug-panel">
+          <div class="debug-panel-header">
+            <div>
+              <p class="section-label">USB Devices</p>
+              <h2 id="debug-usb-count">0 found</h2>
+            </div>
+          </div>
+          <ul class="debug-device-list" id="debug-device-list"></ul>
+        </article>
+      </section>
+
+      <p class="inline-note debug-footnote" id="debug-footnote">
+        Sampling every {{ sample_interval_seconds }} seconds; retaining {{ retention_days }} days.
+      </p>
+    </main>
+
+    <script>
+      window.SCOREHLS_DEBUG_CONFIG = {
+        endpoint: "/api/debug/system",
+        sampleIntervalSeconds: {{ sample_interval_seconds | tojson }},
+        retentionDays: {{ retention_days | tojson }},
+        usbRadioId: {{ usb_radio_id | tojson }}
+      };
+    </script>
+    <script src="{{ url_for('static', filename='debug.js') }}"></script>
+  </body>
+</html>

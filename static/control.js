@@ -1,9 +1,9 @@
 (function runControlPage() {
-  if (!window.ScoreboardCore) {
+  if (!window.ScoreHLSCore) {
     return;
   }
 
-  const core = window.ScoreboardCore;
+  const core = window.ScoreHLSCore;
   const config = core.getConfig();
   const HISTORY_LIMIT = 150;
   const POWER_CONFIRM_MS = 2500;
@@ -28,8 +28,10 @@
   const controlKeyInput = document.getElementById("control-key-input");
   const saveKeyButton = document.getElementById("save-key-button");
   const previewFrame = document.getElementById("control-preview-iframe");
-  const designSelect = document.getElementById("scoreboard-design-select");
-  const designOptions = Array.from(document.querySelectorAll("[data-design-option]"));
+  const sportSelect = document.getElementById("scorehls-sport-select");
+  const sportOptions = Array.from(document.querySelectorAll("[data-sport-option]"));
+  const templateSelect = document.getElementById("scorehls-template-select");
+  const templateOptions = Array.from(document.querySelectorAll("[data-template-option]"));
   const wifiSettingsNotes = Array.from(document.querySelectorAll("[data-wifi-settings-note]"));
   const wifiFallbackOptions = Array.from(document.querySelectorAll("[data-wifi-fallback-option]"));
   const wifiGraceOptions = Array.from(document.querySelectorAll("[data-wifi-grace-option]"));
@@ -46,15 +48,32 @@
   const guestBatArrow = document.getElementById("guest-bat-arrow");
   const homeBatArrow = document.getElementById("home-bat-arrow");
   const inningEditor = document.getElementById("inning-editor");
+  const sportPanels = Array.from(document.querySelectorAll("[data-sport-panel]"));
+  const inningEditMenuItem = document.querySelector('[data-open-overlay="inning-edit-overlay"]');
+  const footballQuarterLabel = document.getElementById("football-quarter-label");
+  const footballClockToggle = document.getElementById("football-clock-toggle");
+  const guestTeamNameInput = document.getElementById("guest-team-name-input");
+  const homeTeamNameInput = document.getElementById("home-team-name-input");
+  const teamNamesResetButton = document.getElementById("team-names-reset-button");
+  const periodLengthOptions = Array.from(document.querySelectorAll("[data-period-length-option]"));
+  const periodCustomMinutesInput = document.getElementById("period-custom-minutes");
+  const periodCustomSecondsInput = document.getElementById("period-custom-seconds");
+  const periodCustomSaveButton = document.getElementById("period-custom-save");
+  const periodCustomCard = document.querySelector(".menu-period-custom-card");
+  const periodCustomStatus = document.getElementById("period-custom-status");
   const saveNote = document.getElementById("save-note");
   const backupFileInput = document.getElementById("backup-file-input");
+  const systemDebugButton = document.getElementById("system-debug-button");
   const restartSystemButton = document.getElementById("restart-system-button");
   const rebootPiButton = document.getElementById("reboot-pi-button");
   const shutdownPiButton = document.getElementById("shutdown-pi-button");
   const menuLevels = {
     main: { title: "Menu", element: document.getElementById("menu-level-main") },
     admin: { title: "Admin", element: document.getElementById("menu-level-admin") },
+    sport: { title: "Sport", element: document.getElementById("menu-level-sport") },
     design: { title: "Design", element: document.getElementById("menu-level-design") },
+    "team-names": { title: "Team Names", element: document.getElementById("menu-level-team-names") },
+    "period-length": { title: "Period Length", element: document.getElementById("menu-level-period-length") },
     backup: { title: "Backup / Reset", element: document.getElementById("menu-level-backup") },
     system: { title: "System Controls", element: document.getElementById("menu-level-system") },
     "wifi-fallback": { title: "Wi-Fi Fallback", element: document.getElementById("menu-level-wifi-fallback") },
@@ -88,10 +107,7 @@
     blackout_idle_seconds: 1800,
   };
   let displayIdleSettingsRequestId = 0;
-
-  function formatDesignLabel(design) {
-    return design.label + " (" + design.width + "x" + design.height + ")";
-  }
+  let pendingSportId = "";
 
   function setStatusMessage(message, isError) {
     saveNote.textContent = message;
@@ -258,7 +274,17 @@
     activeMenuLevel = levelKey;
 
     if (menuPanelTitle) {
-      menuPanelTitle.textContent = nextLevel.title;
+      let titleText = nextLevel.title;
+
+      if (levelKey === "design" && pendingSportId) {
+        const pendingSport = core.getSportById(pendingSportId);
+
+        if (pendingSport && pendingSport.label) {
+          titleText = pendingSport.label + " Design";
+        }
+      }
+
+      menuPanelTitle.textContent = titleText;
     }
 
     if (menuBackButton) {
@@ -276,6 +302,149 @@
     if (levelKey === "display-idle" || levelKey === "display-blackout") {
       loadDisplayIdleSettingsIntoMenu();
     }
+
+    if (levelKey === "team-names") {
+      loadTeamNamesIntoMenu();
+    }
+
+    if (levelKey === "period-length") {
+      syncPeriodLengthSelection();
+    }
+  }
+
+  function getStateSettings() {
+    if (state && state.settings && typeof state.settings === "object") {
+      return state.settings;
+    }
+
+    return { guest_team_name: "Guest", home_team_name: "Home", period_seconds: 720 };
+  }
+
+  function loadTeamNamesIntoMenu() {
+    const settings = getStateSettings();
+
+    if (guestTeamNameInput) {
+      guestTeamNameInput.value = settings.guest_team_name || "";
+    }
+
+    if (homeTeamNameInput) {
+      homeTeamNameInput.value = settings.home_team_name || "";
+    }
+  }
+
+  function saveTeamNames(guestName, homeName) {
+    const nextState = snapshotState();
+    nextState.settings = {
+      ...getStateSettings(),
+      guest_team_name: guestName,
+      home_team_name: homeName,
+    };
+    applyLocalState(nextState);
+  }
+
+  function commitTeamNamesFromInputs() {
+    const guestRaw = (guestTeamNameInput && guestTeamNameInput.value) || "";
+    const homeRaw = (homeTeamNameInput && homeTeamNameInput.value) || "";
+    const guestName = guestRaw.trim().slice(0, 16) || "Guest";
+    const homeName = homeRaw.trim().slice(0, 16) || "Home";
+
+    if (guestTeamNameInput) {
+      guestTeamNameInput.value = guestName;
+    }
+
+    if (homeTeamNameInput) {
+      homeTeamNameInput.value = homeName;
+    }
+
+    saveTeamNames(guestName, homeName);
+  }
+
+  function resetTeamNamesToDefaults() {
+    if (guestTeamNameInput) {
+      guestTeamNameInput.value = "Guest";
+    }
+
+    if (homeTeamNameInput) {
+      homeTeamNameInput.value = "Home";
+    }
+
+    saveTeamNames("Guest", "Home");
+  }
+
+  function syncPeriodLengthSelection() {
+    const current = Number(getStateSettings().period_seconds) || 720;
+    let presetMatched = false;
+
+    periodLengthOptions.forEach(function syncPeriodOption(option) {
+      const isSelected = Number.parseInt(option.dataset.value, 10) === current;
+
+      if (isSelected) {
+        presetMatched = true;
+      }
+
+      option.classList.toggle("is-selected", isSelected);
+      option.setAttribute("aria-pressed", String(isSelected));
+
+      const status = option.querySelector("[data-period-length-status]");
+
+      if (status) {
+        status.hidden = !isSelected;
+      }
+    });
+
+    if (periodCustomMinutesInput) {
+      periodCustomMinutesInput.value = String(Math.floor(current / 60));
+    }
+
+    if (periodCustomSecondsInput) {
+      periodCustomSecondsInput.value = String(current % 60);
+    }
+
+    if (periodCustomCard) {
+      periodCustomCard.classList.toggle("is-selected", !presetMatched);
+    }
+
+    if (periodCustomStatus) {
+      periodCustomStatus.hidden = presetMatched;
+    }
+  }
+
+  function commitPeriodLengthSelection(value) {
+    const seconds = Number.parseInt(value, 10);
+
+    if (!Number.isFinite(seconds) || seconds < 60) {
+      return;
+    }
+
+    const settings = getStateSettings();
+
+    if (settings.period_seconds === seconds) {
+      syncPeriodLengthSelection();
+      return;
+    }
+
+    const nextState = snapshotState();
+    nextState.settings = { ...settings, period_seconds: seconds };
+    applyLocalState(nextState);
+    syncPeriodLengthSelection();
+  }
+
+  function commitPeriodCustomFromInputs() {
+    const minutesRaw = (periodCustomMinutesInput && periodCustomMinutesInput.value) || "0";
+    const secondsRaw = (periodCustomSecondsInput && periodCustomSecondsInput.value) || "0";
+    const minutes = Math.max(0, Math.min(99, Number.parseInt(minutesRaw, 10) || 0));
+    const seconds = Math.max(0, Math.min(59, Number.parseInt(secondsRaw, 10) || 0));
+    const total = Math.max(60, Math.min(99 * 60, minutes * 60 + seconds));
+
+    if (periodCustomMinutesInput) {
+      periodCustomMinutesInput.value = String(Math.floor(total / 60));
+    }
+
+    if (periodCustomSecondsInput) {
+      periodCustomSecondsInput.value = String(total % 60);
+    }
+
+    commitPeriodLengthSelection(total);
   }
 
   function navigateMenuForward(levelKey) {
@@ -294,12 +463,20 @@
     }
 
     cancelPowerConfirm();
+    const previousLevel = activeMenuLevel;
     showMenuLevel(menuHistory.pop());
+
+    if (previousLevel === "design") {
+      pendingSportId = "";
+      syncTemplateOptionVisibility();
+    }
   }
 
   function closeMenuPanel() {
     cancelPowerConfirm();
     menuHistory = [];
+    pendingSportId = "";
+    syncTemplateOptionVisibility();
     showMenuLevel("main");
     menuPanel.hidden = true;
     menuButton.setAttribute("aria-expanded", "false");
@@ -339,13 +516,49 @@
     handleAction("toggle-blackout");
   }
 
-  function commitDesignSelection(value) {
-    if (!designSelect || !value || designSelect.value === value) {
+  function openSportDesigns(sportId) {
+    if (!sportId) {
       return;
     }
 
-    designSelect.value = value;
-    designSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    pendingSportId = sportId;
+    syncTemplateOptionVisibility();
+    navigateMenuForward("design");
+  }
+
+  function commitTemplateSelection(value, sportIdFromOption) {
+    if (!value) {
+      return;
+    }
+
+    const targetSportId = sportIdFromOption || pendingSportId || (state && state.sport_id) || "";
+
+    if (!targetSportId) {
+      return;
+    }
+
+    const nextState = snapshotState();
+    const sportChanged = nextState.sport_id !== targetSportId;
+
+    if (sportChanged) {
+      const nextSport = core.getSportById(targetSportId);
+      nextState.sport_id = nextSport.id;
+      nextState.game = core.cloneDefaultState(nextSport.id).game;
+    }
+
+    nextState.template_id = value;
+    applyLocalState(nextState);
+    pendingSportId = "";
+  }
+
+  function syncTemplateOptionVisibility() {
+    const targetSportId =
+      pendingSportId || (state && state.sport_id) || (templateOptions[0] && templateOptions[0].dataset.sportId) || "";
+
+    templateOptions.forEach(function syncTemplateOption(option) {
+      const isVisible = option.dataset.sportId === targetSportId;
+      option.hidden = !isVisible;
+    });
   }
 
   function updateAuthOverlay() {
@@ -354,7 +567,7 @@
 
     authSkipButton.hidden = Boolean(config.requireKey);
     authNote.textContent = config.requireKey
-      ? "This scoreboard requires the control password before any changes can be made."
+      ? "ScoreHLS requires the control password before any changes can be made."
       : "Enter the control password if one is configured, or skip for this session.";
 
     toggleOverlay(authOverlay, shouldPrompt);
@@ -637,7 +850,42 @@
     });
   }
 
-  function updateSummary() {
+  function currentSportId() {
+    return state && state.sport_id ? state.sport_id : "baseball";
+  }
+
+  function formatFootballClock(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const minutes = Math.floor(total / 60);
+    const remainder = total % 60;
+    return String(minutes).padStart(2, "0") + ":" + String(remainder).padStart(2, "0");
+  }
+
+  function effectiveFootballClockSeconds(game) {
+    if (!game) {
+      return 0;
+    }
+
+    const stored = Math.max(0, Number(game.clock_seconds) || 0);
+
+    if (!game.clock_running) {
+      return stored;
+    }
+
+    const startedAt = game.clock_updated_at ? Date.parse(game.clock_updated_at) : NaN;
+
+    if (!Number.isFinite(startedAt)) {
+      return stored;
+    }
+
+    return Math.max(0, stored - (Date.now() - startedAt) / 1000);
+  }
+
+  function updateBaseballSummary() {
+    if (currentSportId() !== "baseball") {
+      return;
+    }
+
     const derived = core.withDerived(state);
     const guestBatting = derived.half !== "bottom";
     const runsIndex = currentInningIndex(derived);
@@ -653,6 +901,44 @@
     homeBatButton.classList.toggle("is-active", !guestBatting);
     guestBatArrow.classList.toggle("is-active", guestBatting);
     homeBatArrow.classList.toggle("is-active", !guestBatting);
+  }
+
+  function updateFootballSummary() {
+    if (currentSportId() !== "football") {
+      return;
+    }
+
+    const game = state && state.game ? state.game : {};
+    const quarter = Math.max(1, Math.min(4, Number(game.quarter) || 1));
+
+    if (footballQuarterLabel) {
+      const QUARTER_NAMES = ["First Quarter", "Second Quarter", "Third Quarter", "Fourth Quarter"];
+      footballQuarterLabel.textContent = QUARTER_NAMES[quarter - 1] || ("Quarter " + quarter);
+    }
+
+    if (footballClockToggle) {
+      const running = Boolean(game.clock_running);
+      footballClockToggle.textContent = running ? "Pause" : "Start";
+      footballClockToggle.classList.toggle("is-running", running);
+    }
+  }
+
+  function syncSportPanels() {
+    const activeSport = currentSportId();
+
+    sportPanels.forEach(function togglePanel(panel) {
+      panel.hidden = panel.dataset.sportPanel !== activeSport;
+    });
+
+    if (inningEditMenuItem) {
+      inningEditMenuItem.hidden = activeSport !== "baseball";
+    }
+  }
+
+  function updateSummary() {
+    syncSportPanels();
+    updateBaseballSummary();
+    updateFootballSummary();
   }
 
   function syncPowerButton() {
@@ -675,27 +961,46 @@
       : "Turn On";
   }
 
-  function syncDesignSelection() {
-    const design = core.withDerived(state).design;
+  function syncSportTemplateSelection() {
+    const derived = core.withDerived(state);
+    const sport = derived.sport;
+    const template = derived.template;
 
-    if (designSelect) {
-      designSelect.value = design.id;
+    if (sportSelect) {
+      sportSelect.value = sport.id;
     }
 
-    designOptions.forEach(function syncDesignOption(option) {
-      const isSelected = option.dataset.value === design.id;
-      option.classList.toggle("is-selected", isSelected);
-      option.setAttribute("aria-pressed", String(isSelected));
+    if (templateSelect) {
+      templateSelect.value = template.id;
+    }
 
-      const status = option.querySelector("[data-design-status]");
+    sportOptions.forEach(function syncSportOption(option) {
+      const isActive = option.dataset.value === sport.id;
+      option.setAttribute("aria-pressed", String(isActive));
+
+      const status = option.querySelector("[data-sport-status]");
 
       if (status) {
-        status.hidden = !isSelected;
+        status.hidden = !isActive;
       }
     });
 
+    templateOptions.forEach(function syncTemplateOption(option) {
+      const isActiveTemplate = option.dataset.sportId === sport.id && option.dataset.value === template.id;
+      option.classList.toggle("is-selected", isActiveTemplate);
+      option.setAttribute("aria-pressed", String(isActiveTemplate));
+
+      const status = option.querySelector("[data-template-status]");
+
+      if (status) {
+        status.hidden = !isActiveTemplate;
+      }
+    });
+
+    syncTemplateOptionVisibility();
+
     if (previewFrame) {
-      previewFrame.style.aspectRatio = design.width + " / " + design.height;
+      previewFrame.style.aspectRatio = template.width + " / " + template.height;
     }
   }
 
@@ -714,6 +1019,10 @@
   }
 
   function syncEditorInputs() {
+    if (currentSportId() !== "baseball") {
+      return;
+    }
+
     const inputs = inningEditor.querySelectorAll(".inning-input");
 
     inputs.forEach(function syncInput(input) {
@@ -728,7 +1037,7 @@
   function render() {
     updateSummary();
     syncPowerButton();
-    syncDesignSelection();
+    syncSportTemplateSelection();
     syncEditorInputs();
     updateAuthOverlay();
     updateHistoryButtons();
@@ -879,10 +1188,10 @@
         setConnectionState("HTTP READY", false);
       }
 
-      setStatusMessage("Connected to the scoreboard server.", false);
+      setStatusMessage("Connected to the ScoreHLS server.", false);
     } catch (error) {
       setConnectionState("OFFLINE", true);
-      setStatusMessage("Unable to reach the scoreboard API right now.", true);
+      setStatusMessage("Unable to reach the ScoreHLS API right now.", true);
     }
   }
 
@@ -904,6 +1213,7 @@
       pendingRequestId = "";
       pendingActionType = "";
       saveInFlight = false;
+      updateHistoryButtons();
       setStatusMessage(
         completedAction === "reset" ? "Game reset complete." : "Saved " + core.formatTimestamp(payload.updated_at || payload.state.updated_at),
         false
@@ -975,8 +1285,48 @@
     });
   }
 
-  function handleAction(action) {
+  function applyFootballClockAdjust(nextState, deltaSeconds) {
+    const game = nextState.game || {};
+    const current = effectiveFootballClockSeconds(game);
+    const adjusted = Math.max(0, current + deltaSeconds);
+
+    if (game.clock_running) {
+      game.clock_seconds = adjusted;
+      game.clock_updated_at = new Date().toISOString();
+    } else {
+      game.clock_seconds = adjusted;
+      game.clock_updated_at = null;
+    }
+
+    nextState.game = game;
+  }
+
+  function applyFootballClockToggle(nextState) {
+    const game = nextState.game || {};
+
+    if (game.clock_running) {
+      const remaining = effectiveFootballClockSeconds(game);
+      game.clock_seconds = remaining;
+      game.clock_running = false;
+      game.clock_updated_at = null;
+    } else {
+      game.clock_running = true;
+      game.clock_updated_at = new Date().toISOString();
+    }
+
+    nextState.game = game;
+  }
+
+  function applyFootballScoreDelta(nextState, side, delta) {
+    const game = nextState.game || {};
+    const key = side === "home" ? "home_score" : "guest_score";
+    game[key] = Math.max(0, (Number(game[key]) || 0) + delta);
+    nextState.game = game;
+  }
+
+  function handleAction(action, dataset) {
     const nextState = snapshotState();
+    const data = dataset || {};
 
     switch (action) {
       case "inning-down":
@@ -1032,6 +1382,32 @@
       case "toggle-blackout":
         nextState.blackout = !nextState.blackout;
         closeMenuPanel();
+        break;
+      case "football-quarter-up":
+        nextState.game = nextState.game || {};
+        nextState.game.quarter = Math.min(4, Math.max(1, Number(nextState.game.quarter) || 1) + 1);
+        break;
+      case "football-quarter-down":
+        nextState.game = nextState.game || {};
+        nextState.game.quarter = Math.max(1, Math.max(1, Number(nextState.game.quarter) || 1) - 1);
+        break;
+      case "football-clock-toggle":
+        applyFootballClockToggle(nextState);
+        break;
+      case "football-clock-reset":
+        nextState.game = nextState.game || {};
+        nextState.game.clock_seconds = Number(getStateSettings().period_seconds) || 720;
+        nextState.game.clock_running = false;
+        nextState.game.clock_updated_at = null;
+        break;
+      case "football-clock-adjust":
+        applyFootballClockAdjust(nextState, Number.parseInt(data.delta, 10) || 0);
+        break;
+      case "football-guest-score-add":
+        applyFootballScoreDelta(nextState, "guest", Number.parseInt(data.delta, 10) || 0);
+        break;
+      case "football-home-score-add":
+        applyFootballScoreDelta(nextState, "home", Number.parseInt(data.delta, 10) || 0);
         break;
       default:
         return;
@@ -1141,7 +1517,7 @@
     const closeOverlayTrigger = event.target.closest("[data-close-overlay]");
 
     if (actionTrigger) {
-      handleAction(actionTrigger.dataset.action);
+      handleAction(actionTrigger.dataset.action, actionTrigger.dataset);
       return;
     }
 
@@ -1171,20 +1547,12 @@
     applyLocalState(nextState);
   });
 
-  if (designSelect) {
-    designSelect.addEventListener("change", function onDesignChange() {
-      const nextState = snapshotState();
-      nextState.design_id = designSelect.value;
-      applyLocalState(nextState);
-    });
-  }
-
-  designOptions.forEach(function bindDesignOption(option, index) {
-    option.addEventListener("click", function onDesignOptionClick() {
-      commitDesignSelection(option.dataset.value);
+  sportOptions.forEach(function bindSportOption(option, index) {
+    option.addEventListener("click", function onSportOptionClick() {
+      openSportDesigns(option.dataset.value);
     });
 
-    option.addEventListener("keydown", function onDesignOptionKeydown(event) {
+    option.addEventListener("keydown", function onSportOptionKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         navigateMenuBack();
@@ -1197,19 +1565,59 @@
 
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        commitDesignSelection(option.dataset.value);
+        openSportDesigns(option.dataset.value);
         return;
       }
 
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        designOptions[Math.min(index + 1, designOptions.length - 1)].focus();
+        sportOptions[Math.min(index + 1, sportOptions.length - 1)].focus();
         return;
       }
 
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        designOptions[Math.max(index - 1, 0)].focus();
+        sportOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
+  });
+
+  templateOptions.forEach(function bindTemplateOption(option, index) {
+    option.addEventListener("click", function onTemplateOptionClick() {
+      commitTemplateSelection(option.dataset.value, option.dataset.sportId);
+    });
+
+    option.addEventListener("keydown", function onTemplateOptionKeydown(event) {
+      const visibleTemplateOptions = templateOptions.filter(function isVisibleTemplate(templateOption) {
+        return !templateOption.hidden;
+      });
+      const visibleIndex = visibleTemplateOptions.indexOf(option);
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitTemplateSelection(option.dataset.value, option.dataset.sportId);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        visibleTemplateOptions[Math.min(visibleIndex + 1, visibleTemplateOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        visibleTemplateOptions[Math.max(visibleIndex - 1, 0)].focus();
       }
     });
   });
@@ -1315,6 +1723,83 @@
       if (event.key === "ArrowUp") {
         event.preventDefault();
         displayIdleOptions[Math.max(index - 1, 0)].focus();
+      }
+    });
+  });
+
+  if (teamNamesResetButton) {
+    teamNamesResetButton.addEventListener("click", resetTeamNamesToDefaults);
+  }
+
+  [guestTeamNameInput, homeTeamNameInput].forEach(function bindTeamNameInput(input) {
+    if (!input) {
+      return;
+    }
+
+    input.addEventListener("keydown", function onTeamNameKeydown(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitTeamNamesFromInputs();
+      }
+    });
+
+    input.addEventListener("blur", commitTeamNamesFromInputs);
+  });
+
+  if (periodCustomSaveButton) {
+    periodCustomSaveButton.addEventListener("click", commitPeriodCustomFromInputs);
+  }
+
+  if (systemDebugButton) {
+    systemDebugButton.addEventListener("click", function openSystemDebug() {
+      window.location.href = "/debug";
+    });
+  }
+
+  [periodCustomMinutesInput, periodCustomSecondsInput].forEach(function bindPeriodCustomInput(input) {
+    if (!input) {
+      return;
+    }
+
+    input.addEventListener("keydown", function onPeriodCustomKeydown(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitPeriodCustomFromInputs();
+      }
+    });
+  });
+
+  periodLengthOptions.forEach(function bindPeriodLengthOption(option, index) {
+    option.addEventListener("click", function onPeriodLengthClick() {
+      commitPeriodLengthSelection(option.dataset.value);
+    });
+
+    option.addEventListener("keydown", function onPeriodLengthKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        navigateMenuBack();
+
+        if (menuBackButton) {
+          menuBackButton.focus();
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        commitPeriodLengthSelection(option.dataset.value);
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        periodLengthOptions[Math.min(index + 1, periodLengthOptions.length - 1)].focus();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        periodLengthOptions[Math.max(index - 1, 0)].focus();
       }
     });
   });
@@ -1500,9 +1985,9 @@
 
   restartSystemButton.addEventListener("click", function onRestartSystem() {
     runSystemAction(
-      "restart-scoreboard",
+      "restart-scorehls",
       "Restart Application",
-      "Restart the scoreboard application and display now? The controller may disconnect for a moment.",
+      "Restart the ScoreHLS application and display now? The controller may disconnect for a moment.",
       "APPLICATION RESTARTING"
     );
   });
@@ -1511,8 +1996,8 @@
     runSystemAction(
       "reboot-pi",
       "Reboot Raspberry Pi",
-      "Reboot the scoreboard now? This restarts the Raspberry Pi and disconnects all controllers until boot finishes.",
-      "SCOREBOARD REBOOTING"
+      "Reboot ScoreHLS now? This restarts the Raspberry Pi and disconnects all controllers until boot finishes.",
+      "SCOREHLS REBOOTING"
     );
   });
 
@@ -1520,8 +2005,8 @@
     runSystemAction(
       "shutdown-pi",
       "Shutdown Raspberry Pi",
-      "Shut down the scoreboard now? This powers off the Raspberry Pi, and you will need to turn it back on manually.",
-      "SCOREBOARD SHUTDOWN"
+      "Shut down ScoreHLS now? This powers off the Raspberry Pi, and you will need to turn it back on manually.",
+      "SCOREHLS SHUTDOWN"
     );
   });
 

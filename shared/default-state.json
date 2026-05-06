@@ -1,11 +1,20 @@
 {
-  "design_id": "baseball-v2",
+  "schema_version": 1,
+  "sport_id": "baseball",
+  "template_id": "baseball-linescore-v2",
   "blackout": false,
-  "inning": 1,
-  "half": "top",
-  "ball": 0,
-  "strike": 0,
-  "out": 0,
-  "guest_runs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  "home_runs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  "game": {
+    "inning": 1,
+    "half": "top",
+    "ball": 0,
+    "strike": 0,
+    "out": 0,
+    "guest_runs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    "home_runs": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "settings": {
+    "guest_team_name": "Guest",
+    "home_team_name": "Home",
+    "period_seconds": 720
+  }
 }

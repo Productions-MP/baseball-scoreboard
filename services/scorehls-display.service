@@ -1,7 +1,7 @@
 [Unit]
-Description=Highlands Latin School baseball scoreboard kiosk display on tty1
-Requires=scoreboard-local.service
-After=scoreboard-local.service systemd-user-sessions.service plymouth-quit-wait.service
+Description=Highlands Latin School ScoreHLS kiosk display on tty1
+Requires=scorehls-local.service
+After=scorehls-local.service systemd-user-sessions.service plymouth-quit-wait.service
 Before=graphical.target
 ConditionPathExists=/dev/tty0
 Wants=dbus.socket systemd-logind.service
@@ -30,7 +30,7 @@ TTYReset=yes
 TTYVHangup=yes
 TTYVTDisallocate=yes
 StandardInput=tty-fail
-PAMName=scoreboard-display
+PAMName=scorehls-display
 
 [Install]
 WantedBy=graphical.target

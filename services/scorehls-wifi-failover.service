@@ -1,5 +1,5 @@
 [Unit]
-Description=Maintain preferred USB Wi-Fi with fallback for Highlands Latin School baseball scoreboard
+Description=Maintain preferred USB Wi-Fi with fallback for Highlands Latin School ScoreHLS
 After=NetworkManager.service network-online.target
 Wants=NetworkManager.service
 
@@ -8,4 +8,3 @@ Type=oneshot
 WorkingDirectory=__APP_ROOT__
 EnvironmentFile=-__APP_ROOT__/.env
 ExecStart=/bin/bash __APP_ROOT__/scripts/maintain-wifi-failover.sh
-

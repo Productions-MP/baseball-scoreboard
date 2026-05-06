@@ -1,11 +1,11 @@
 (function runDisplayPage() {
-  if (!window.ScoreboardCore) {
+  if (!window.ScoreHLSCore) {
     return;
   }
 
-  const core = window.ScoreboardCore;
+  const core = window.ScoreHLSCore;
   const config = core.getConfig();
-  const activeDesign = core.getActiveDesign();
+  const activeTemplate = core.getActiveTemplate();
   const frame = document.getElementById("display-frame");
   const screensaver = document.getElementById("display-screensaver");
   const heartbeatLed = document.getElementById("heartbeat-led");
@@ -26,10 +26,10 @@
   }
 
   function setScale() {
-    const scale = Math.min(window.innerWidth / activeDesign.width, window.innerHeight / activeDesign.height);
+    const scale = Math.min(window.innerWidth / activeTemplate.width, window.innerHeight / activeTemplate.height);
     const safeScale = Math.max(scale, 0.1);
-    const offsetX = Math.max((window.innerWidth - activeDesign.width * safeScale) / 2, 0);
-    const offsetY = Math.max((window.innerHeight - activeDesign.height * safeScale) / 2, 0);
+    const offsetX = Math.max((window.innerWidth - activeTemplate.width * safeScale) / 2, 0);
+    const offsetY = Math.max((window.innerHeight - activeTemplate.height * safeScale) / 2, 0);
 
     frame.style.transform = "translate(" + offsetX + "px, " + offsetY + "px) scale(" + safeScale + ")";
   }
@@ -115,6 +115,8 @@
     const activeInningHighlight = document.getElementById("active-inning-highlight");
     const guestTeamCell = document.getElementById("guest-team-cell");
     const homeTeamCell = document.getElementById("home-team-cell");
+    const guestTeamLabel = document.getElementById("guest-team-label");
+    const homeTeamLabel = document.getElementById("home-team-label");
     const guestArrow = document.getElementById("guest-arrow");
     const homeArrow = document.getElementById("home-arrow");
     const ball = document.getElementById("count-ball");
@@ -291,8 +293,26 @@
       return settings.hideFutureInnings && index + 1 > state.inning && Number(run) <= 0;
     }
 
+    function readTeamNames(state) {
+      const stateSettings = state && state.settings ? state.settings : {};
+      return {
+        guest: stateSettings.guest_team_name || "Guest",
+        home: stateSettings.home_team_name || "Home",
+      };
+    }
+
     return {
       render: function render(state) {
+        const teamNames = readTeamNames(state);
+
+        if (guestTeamLabel) {
+          guestTeamLabel.textContent = teamNames.guest;
+        }
+
+        if (homeTeamLabel) {
+          homeTeamLabel.textContent = teamNames.home;
+        }
+
         const hasOvertime =
           state.inning >= 10 ||
           (Array.isArray(state.guest_runs) && Number(state.guest_runs[9]) > 0) ||
@@ -368,19 +388,115 @@
     };
   }
 
+  function createFootballClockRenderer() {
+    const quarterEl = document.getElementById("football-quarter");
+    const clockEl = document.getElementById("football-clock");
+    const guestScoreEl = document.getElementById("football-guest-score");
+    const homeScoreEl = document.getElementById("football-home-score");
+    const guestTeamLabel = document.getElementById("football-guest-team-label");
+    const homeTeamLabel = document.getElementById("football-home-team-label");
+    let lastGame = null;
+
+    function formatClock(seconds) {
+      const total = Math.max(0, Math.floor(seconds));
+      const minutes = Math.floor(total / 60);
+      const remainder = total % 60;
+      return String(minutes).padStart(2, "0") + ":" + String(remainder).padStart(2, "0");
+    }
+
+    function effectiveClockSeconds(game) {
+      if (!game) {
+        return 0;
+      }
+
+      const stored = Math.max(0, Number(game.clock_seconds) || 0);
+
+      if (!game.clock_running) {
+        return stored;
+      }
+
+      const startedAt = game.clock_updated_at ? Date.parse(game.clock_updated_at) : NaN;
+
+      if (!Number.isFinite(startedAt)) {
+        return stored;
+      }
+
+      const elapsedSeconds = Math.max(0, (Date.now() - startedAt) / 1000);
+      return Math.max(0, stored - elapsedSeconds);
+    }
+
+    function setNumericText(element, value) {
+      if (!element) {
+        return;
+      }
+
+      const text = String(value);
+      const digits = (text.match(/\d/g) || []).length;
+      element.textContent = text;
+      element.classList.toggle("is-single-digit-score", digits <= 1);
+      element.classList.toggle("is-two-digit-score", digits === 2);
+      element.classList.toggle("is-three-digit-score", digits >= 3);
+    }
+
+    function renderClockOnly() {
+      if (!clockEl || !lastGame) {
+        return;
+      }
+
+      clockEl.textContent = formatClock(effectiveClockSeconds(lastGame));
+      clockEl.classList.toggle("is-clock-running", Boolean(lastGame.clock_running));
+      clockEl.classList.toggle("is-clock-stopped", !lastGame.clock_running);
+    }
+
+    return {
+      render: function render(state) {
+        const game = state && state.game ? state.game : state || {};
+        const stateSettings = state && state.settings ? state.settings : {};
+        const guestName = stateSettings.guest_team_name || "Guest";
+        const homeName = stateSettings.home_team_name || "Home";
+        lastGame = game;
+
+        if (guestTeamLabel) {
+          guestTeamLabel.textContent = guestName;
+        }
+
+        if (homeTeamLabel) {
+          homeTeamLabel.textContent = homeName;
+        }
+
+        if (quarterEl) {
+          quarterEl.textContent = "Q" + Math.max(1, Math.min(4, Number(game.quarter) || 1));
+        }
+
+        setNumericText(guestScoreEl, Math.max(0, Number(game.guest_score) || 0));
+        setNumericText(homeScoreEl, Math.max(0, Number(game.home_score) || 0));
+        renderClockOnly();
+      },
+      resize: function resize() {
+        renderClockOnly();
+      },
+      tick: function tick() {
+        renderClockOnly();
+      },
+    };
+  }
+
   const displayRenderers = {
-    "baseball-v1": function createBaseballV1Renderer() {
+    "baseball-linescore-v1": function createBaseballV1Renderer() {
       return createBaseballLinescoreRenderer(document.querySelector(".scoreboard-display-baseball-v1"));
     },
-    "baseball-v2": function createBaseballV2Renderer() {
+    "baseball-linescore-v2": function createBaseballV2Renderer() {
       return createBaseballLinescoreRenderer(document.querySelector(".scoreboard-display-baseball-v2"), {
         activeScoreCell: true,
         blankUntilReached: true,
       });
     },
+    "football-clock-v1": function createFootballV1Renderer() {
+      return createFootballClockRenderer();
+    },
   };
 
-  const rendererFactory = displayRenderers[activeDesign.id];
+  const rendererFactory = displayRenderers[activeTemplate.id];
 
   if (!rendererFactory) {
     return;
@@ -391,7 +507,7 @@
   function render(payload) {
     const state = core.withDerived(payload.state || payload);
 
-    if (state.design_id !== activeDesign.id) {
+    if (state.template_id !== activeTemplate.id) {
       reloadForDesignChange();
       return;
     }
@@ -447,6 +563,13 @@
     render(config.initialState);
   }
   window.setInterval(updateIdlePresentation, 10000);
+
+  if (typeof renderer.tick === "function") {
+    window.setInterval(function tickRenderer() {
+      renderer.tick();
+    }, 100);
+  }
+
   refresh();
   connectRealtime();
 })();

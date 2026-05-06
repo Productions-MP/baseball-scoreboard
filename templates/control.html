@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#000000">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="{{ school_name }} Control">
+    <meta name="apple-mobile-web-app-title" content="ScoreHLS Control">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <title>{{ school_name }} Scoreboard Control</title>
+    <title>ScoreHLS Control</title>
     <link rel="manifest" href="{{ url_for('public_asset', filename='control.webmanifest') }}">
     <link rel="apple-touch-icon" href="{{ url_for('public_asset', filename='icons/apple-touch-icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
@@ -23,7 +23,7 @@
           id="control-preview-iframe"
           class="control-preview-iframe"
           src="/display"
-          title="Live scoreboard preview"
+          title="Live ScoreHLS preview"
           tabindex="-1"
         ></iframe>
       </section>
@@ -39,6 +39,7 @@
           </button>
         </div>
 
+        <div class="sport-control-panel" id="sport-control-baseball" data-sport-panel="baseball">
         <div class="flow-card inning-card">
           <p class="section-label">Inning</p>
           <div class="inning-flow-row">
@@ -113,6 +114,62 @@
             </div>
           </div>
         </div>
+        </div>
+
+        <div class="sport-control-panel" id="sport-control-football" data-sport-panel="football" hidden>
+          <div class="counts-panel">
+            <div class="counts-panel-header">
+              <p class="section-label">Quarter &amp; Game Clock</p>
+            </div>
+            <div class="football-clock-controls">
+              <div class="football-quarter-stepper">
+                <button class="stepper-button bottom-stepper-button inning-button" type="button" data-action="football-quarter-down">-</button>
+                <div class="inning-label" id="football-quarter-label">Q1</div>
+                <button class="stepper-button top-stepper-button inning-button" type="button" data-action="football-quarter-up">+</button>
+              </div>
+              <button class="action-button accent-button football-clock-toggle" type="button" id="football-clock-toggle" data-action="football-clock-toggle">Start</button>
+              <button class="action-button clear-count-button football-clock-reset" type="button" data-action="football-clock-reset">Reset</button>
+            </div>
+            <div class="football-clock-adjust">
+              <button class="action-button subtle-button" type="button" data-action="football-clock-adjust" data-delta="-60">-1:00</button>
+              <button class="action-button subtle-button" type="button" data-action="football-clock-adjust" data-delta="-10">-0:10</button>
+              <button class="action-button subtle-button" type="button" data-action="football-clock-adjust" data-delta="-1">-0:01</button>
+              <button class="action-button subtle-button" type="button" data-action="football-clock-adjust" data-delta="1">+0:01</button>
+              <button class="action-button subtle-button" type="button" data-action="football-clock-adjust" data-delta="10">+0:10</button>
+              <button class="action-button subtle-button" type="button" data-action="football-clock-adjust" data-delta="60">+1:00</button>
+            </div>
+          </div>
+
+          <div class="counts-panel">
+            <div class="counts-panel-header">
+              <p class="section-label">Score</p>
+            </div>
+            <div class="football-score-grid">
+              <div class="football-score-card">
+                <h2>Guest</h2>
+                <div class="football-score-row">
+                  <button class="action-button subtle-button" type="button" data-action="football-guest-score-add" data-delta="-1">-1</button>
+                  <button class="action-button subtle-button" type="button" data-action="football-guest-score-add" data-delta="1">+1</button>
+                  <button class="action-button subtle-button" type="button" data-action="football-guest-score-add" data-delta="2">+2</button>
+                  <button class="action-button subtle-button" type="button" data-action="football-guest-score-add" data-delta="3">+3</button>
+                  <button class="action-button accent-button" type="button" data-action="football-guest-score-add" data-delta="6">TD +6</button>
+                  <button class="action-button accent-button" type="button" data-action="football-guest-score-add" data-delta="7">TD+XP +7</button>
+                </div>
+              </div>
+              <div class="football-score-card">
+                <h2>Home</h2>
+                <div class="football-score-row">
+                  <button class="action-button subtle-button" type="button" data-action="football-home-score-add" data-delta="-1">-1</button>
+                  <button class="action-button subtle-button" type="button" data-action="football-home-score-add" data-delta="1">+1</button>
+                  <button class="action-button subtle-button" type="button" data-action="football-home-score-add" data-delta="2">+2</button>
+                  <button class="action-button subtle-button" type="button" data-action="football-home-score-add" data-delta="3">+3</button>
+                  <button class="action-button accent-button" type="button" data-action="football-home-score-add" data-delta="6">TD +6</button>
+                  <button class="action-button accent-button" type="button" data-action="football-home-score-add" data-delta="7">TD+XP +7</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <p class="inline-note status-note" id="save-note">Changes save immediately after each action.</p>
       </section>
@@ -122,7 +179,7 @@
       <div class="overlay-card auth-dialog-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
         <p class="eyebrow">Control access</p>
         <h2 id="auth-title">Enter control password</h2>
-        <p class="inline-note" id="auth-note">Use the local control password saved on the scoreboard Pi.</p>
+        <p class="inline-note" id="auth-note">Use the local control password saved on the ScoreHLS Pi.</p>
         <input
           id="control-key-input"
           class="text-input"
@@ -172,8 +229,16 @@
           </div>
 
           <div class="menu-level" id="menu-level-admin" hidden>
-            <button class="menu-nav-item" type="button" data-navigate-menu="design">
-              <span class="menu-nav-item-label">Design</span>
+            <button class="menu-nav-item" type="button" data-navigate-menu="sport">
+              <span class="menu-nav-item-label">Sport</span>
+              <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
+            <button class="menu-nav-item" type="button" data-navigate-menu="team-names">
+              <span class="menu-nav-item-label">Team Names</span>
+              <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
+            <button class="menu-nav-item" type="button" data-navigate-menu="period-length">
+              <span class="menu-nav-item-label">Period Length</span>
               <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
             </button>
             <button class="menu-nav-item" type="button" data-navigate-menu="backup">
@@ -186,30 +251,132 @@
             </button>
           </div>
 
-          <div class="menu-level" id="menu-level-design" hidden>
-            <select id="scoreboard-design-select" class="select-input-native" aria-hidden="true" tabindex="-1">
-              {% for design in scoreboard_designs %}
-                <option value="{{ design.id }}" {% if design.id == initial_state.design_id %}selected{% endif %}>
-                  {{ design.label }} ({{ design.width }}x{{ design.height }})
+          <div class="menu-level" id="menu-level-team-names" hidden>
+            <label class="menu-text-field">
+              <span class="menu-text-field-label">Guest</span>
+              <input id="guest-team-name-input" class="text-input" type="text" maxlength="16" autocomplete="off" placeholder="Guest">
+            </label>
+            <label class="menu-text-field">
+              <span class="menu-text-field-label">Home</span>
+              <input id="home-team-name-input" class="text-input" type="text" maxlength="16" autocomplete="off" placeholder="Home">
+            </label>
+            <button class="action-button subtle-button menu-action-fullwidth" type="button" id="team-names-reset-button">Reset to Default</button>
+          </div>
+
+          <div class="menu-level" id="menu-level-period-length" hidden>
+            <button type="button" class="menu-nav-item menu-nav-item-detail" data-period-length-option data-value="300" aria-pressed="false">
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">5 minutes</span>
+                <span class="menu-nav-item-meta">300 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-period-length-status hidden>Active</span>
+            </button>
+            <button type="button" class="menu-nav-item menu-nav-item-detail" data-period-length-option data-value="480" aria-pressed="false">
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">8 minutes</span>
+                <span class="menu-nav-item-meta">480 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-period-length-status hidden>Active</span>
+            </button>
+            <button type="button" class="menu-nav-item menu-nav-item-detail" data-period-length-option data-value="600" aria-pressed="false">
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">10 minutes</span>
+                <span class="menu-nav-item-meta">600 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-period-length-status hidden>Active</span>
+            </button>
+            <button type="button" class="menu-nav-item menu-nav-item-detail" data-period-length-option data-value="720" aria-pressed="false">
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">12 minutes</span>
+                <span class="menu-nav-item-meta">720 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-period-length-status hidden>Active</span>
+            </button>
+            <button type="button" class="menu-nav-item menu-nav-item-detail" data-period-length-option data-value="900" aria-pressed="false">
+              <span class="menu-nav-item-copy">
+                <span class="menu-nav-item-label">15 minutes</span>
+                <span class="menu-nav-item-meta">900 seconds</span>
+              </span>
+              <span class="menu-nav-item-status" data-period-length-status hidden>Active</span>
+            </button>
+            <div class="menu-period-custom-card">
+              <div class="menu-period-custom-header">
+                <span class="menu-period-custom-title">Custom</span>
+                <span class="menu-nav-item-status" id="period-custom-status" hidden>Active</span>
+              </div>
+              <div class="menu-period-custom-row">
+                <label class="menu-period-custom-field">
+                  <span class="menu-period-custom-label">Minutes</span>
+                  <input id="period-custom-minutes" class="text-input" type="number" min="0" max="99" inputmode="numeric" autocomplete="off">
+                </label>
+                <span class="menu-period-custom-divider" aria-hidden="true">:</span>
+                <label class="menu-period-custom-field">
+                  <span class="menu-period-custom-label">Seconds</span>
+                  <input id="period-custom-seconds" class="text-input" type="number" min="0" max="59" inputmode="numeric" autocomplete="off">
+                </label>
+                <button class="action-button accent-button menu-period-custom-save" type="button" id="period-custom-save">Save</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="menu-level" id="menu-level-sport" hidden>
+            <select id="scorehls-sport-select" class="select-input-native" aria-hidden="true" tabindex="-1">
+              {% for sport in sports %}
+                <option value="{{ sport.id }}" {% if sport.id == initial_state.sport_id %}selected{% endif %}>
+                  {{ sport.label }}
                 </option>
               {% endfor %}
             </select>
-            {% for design in scoreboard_designs %}
+            <select id="scorehls-template-select" class="select-input-native" aria-hidden="true" tabindex="-1">
+              {% for sport in sports %}
+                {% for template in sport.templates %}
+                  <option value="{{ template.id }}" data-sport-id="{{ sport.id }}" {% if template.id == initial_state.template_id %}selected{% endif %}>
+                    {{ template.label }} ({{ template.width }}x{{ template.height }})
+                  </option>
+                {% endfor %}
+              {% endfor %}
+            </select>
+            {% for sport in sports %}
               <button
                 type="button"
-                class="menu-nav-item menu-nav-item-detail"
-                data-design-option
-                data-value="{{ design.id }}"
-                aria-pressed="{% if design.id == initial_state.design_id %}true{% else %}false{% endif %}"
+                class="menu-nav-item"
+                data-sport-option
+                data-value="{{ sport.id }}"
+                aria-pressed="{% if sport.id == initial_state.sport_id %}true{% else %}false{% endif %}"
               >
                 <span class="menu-nav-item-copy">
-                  <span class="menu-nav-item-label">{{ design.label }}</span>
-                  <span class="menu-nav-item-meta">{{ design.width }}x{{ design.height }}</span>
+                  <span class="menu-nav-item-label">{{ sport.label }}</span>
+                  <span class="menu-nav-item-meta">{{ sport.templates | length }} design{% if sport.templates | length != 1 %}s{% endif %}</span>
                 </span>
-                <span class="menu-nav-item-status" data-design-status {% if design.id != initial_state.design_id %}hidden{% endif %}>
+                <span class="menu-nav-item-status" data-sport-status {% if sport.id != initial_state.sport_id %}hidden{% endif %}>
                   Active
                 </span>
+                <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
               </button>
+            {% endfor %}
+          </div>
+
+          <div class="menu-level" id="menu-level-design" hidden>
+            {% for sport in sports %}
+              {% for template in sport.templates %}
+                <button
+                  type="button"
+                  class="menu-nav-item menu-nav-item-detail"
+                  data-template-option
+                  data-sport-id="{{ sport.id }}"
+                  data-value="{{ template.id }}"
+                  aria-pressed="{% if template.id == initial_state.template_id %}true{% else %}false{% endif %}"
+                  {% if sport.id != initial_state.sport_id %}hidden{% endif %}
+                >
+                  <span class="menu-nav-item-copy">
+                    <span class="menu-nav-item-label">{{ template.label }}</span>
+                    <span class="menu-nav-item-meta">{{ template.width }}x{{ template.height }}</span>
+                  </span>
+                  <span class="menu-nav-item-status" data-template-status {% if template.id != initial_state.template_id %}hidden{% endif %}>
+                    Active
+                  </span>
+                </button>
+              {% endfor %}
             {% endfor %}
           </div>
 
@@ -241,6 +408,9 @@
             <button class="menu-nav-item" type="button" data-navigate-menu="display-blackout">
               <span class="menu-nav-item-label">Blackout Timeout</span>
               <span class="menu-nav-arrow" aria-hidden="true">&#8250;</span>
+            </button>
+            <button class="menu-nav-item" type="button" id="system-debug-button">
+              <span class="menu-nav-item-label">System Debug</span>
             </button>
             <button class="menu-nav-item" type="button" id="restart-system-button">
               <span class="menu-nav-item-label">Restart Application</span>
@@ -564,12 +734,13 @@
     <input id="backup-file-input" type="file" accept="application/json" hidden>
 
     <script>
-      window.SCOREBOARD_CONFIG = {
+      window.SCOREHLS_CONFIG = {
         requireKey: {{ require_key | tojson }},
-        defaultDesignId: {{ default_design_id | tojson }},
-        designs: {{ scoreboard_designs | tojson }},
+        defaultSportId: {{ default_sport_id | tojson }},
+        defaultTemplateId: {{ default_template_id | tojson }},
+        sports: {{ sports | tojson }},
         initialState: {{ initial_state | tojson }},
-        keyStorageName: "scoreboard-local-control-key",
+        keyStorageName: "scorehls-local-control-key",
         endpoints: {
           getState: "/api/state",
           updateState: "/api/state",
