@@ -553,6 +553,7 @@ body.display-page.is-screensaver .display-shell {
   grid-template-columns: minmax(0, 1fr) minmax(140px, auto) minmax(140px, auto);
   align-items: stretch;
   gap: 12px;
+  min-width: 0;
 }
 
 .football-quarter-stepper {
@@ -560,6 +561,7 @@ body.display-page.is-screensaver .display-shell {
   grid-template-columns: 64px minmax(110px, 1fr) 64px;
   gap: clamp(8px, 1vw, 12px);
   align-items: stretch;
+  min-width: 0;
 }
 
 .football-clock-toggle {
@@ -583,6 +585,7 @@ body.display-page.is-screensaver .display-shell {
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   margin-top: 10px;
+  min-width: 0;
 }
 
 .football-score-grid {
@@ -590,6 +593,7 @@ body.display-page.is-screensaver .display-shell {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   margin-top: 10px;
+  min-width: 0;
 }
 
 .football-score-card {
@@ -599,6 +603,7 @@ body.display-page.is-screensaver .display-shell {
   background: transparent;
   border: 1px solid rgba(174, 145, 66, 0.4);
   border-radius: 8px;
+  min-width: 0;
 }
 
 .football-score-card h2 {
@@ -615,6 +620,16 @@ body.display-page.is-screensaver .display-shell {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  min-width: 0;
+}
+
+.football-clock-adjust .action-button,
+.football-score-row .action-button {
+  min-width: 0;
+  padding-inline: 0.45rem;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .linescore-panel {
@@ -2331,6 +2346,8 @@ body.display-page.is-screensaver .display-shell {
   .counts-panel-header,
   .inning-flow-row,
   .at-bat-flow-row,
+  .football-clock-controls,
+  .football-score-grid,
   .control-stepper-grid,
   .stepper-row,
   .utility-grid,
@@ -2352,6 +2369,25 @@ body.display-page.is-screensaver .display-shell {
 
   .control-main-panel {
     grid-template-columns: 1fr;
+  }
+
+  .football-clock-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .football-quarter-stepper {
+    grid-column: 1 / -1;
+    grid-template-columns: 64px minmax(0, 1fr) 64px;
+  }
+
+  .football-clock-toggle,
+  .football-clock-reset.clear-count-button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .football-clock-adjust {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .inning-card,
@@ -2432,6 +2468,10 @@ body.display-page.is-screensaver .display-shell {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .football-score-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .stepper-row {
     grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
   }
@@ -2487,6 +2527,39 @@ body.display-page.is-screensaver .display-shell {
 
   .counts-panel-header {
     grid-template-columns: 1fr;
+  }
+
+  .football-clock-controls,
+  .football-clock-adjust,
+  .football-score-grid,
+  .football-score-row {
+    gap: 8px;
+  }
+
+  .football-quarter-stepper {
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
+  }
+
+  .football-score-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .football-score-card {
+    padding: 10px;
+  }
+
+  .football-clock-adjust .action-button,
+  .football-score-row .action-button {
+    min-height: 52px;
+    padding: 0.58rem 0.35rem;
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+    line-height: 1.05;
+  }
+
+  .football-score-row .accent-button {
+    font-size: 0.78rem;
+    letter-spacing: 0.01em;
   }
 
   .counts-panel-actions {
